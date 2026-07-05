@@ -1,8 +1,12 @@
 node_modules/
 dist/
+build/
+.svelte-kit/
 .env
+.env.*
 *.pyc
 __pycache__/
 data/
 nginx/ssl/
 .DS_Store
+*.log

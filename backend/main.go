@@ -2,14 +2,19 @@ package main
 
 import (
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/helmet"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/google/uuid"
 )
 
@@ -58,30 +63,44 @@ func main() {
 	}
 
 	app := fiber.New(fiber.Config{
-		AppName:      "ResumeTake API",
-		BodyLimit:    10 * 1024 * 1024,
-		ServerHeader: "ResumeTake",
+		AppName:       "ResumeTake API v1.0",
+		BodyLimit:     10 * 1024 * 1024,
+		ServerHeader:  "ResumeTake",
 		StrictRouting: true,
 		CaseSensitive: true,
+		IdleTimeout:   30 * time.Second,
 	})
 
 	app.Use(recover.New())
-	app.Use(logger.New(":method :path :status - :res["content-type"] - :latency"))
+	app.Use(requestid.New())
+	app.Use(logger.New("${locals:requestid} ${method} ${path} ${status} - ${latency}"))
+	app.Use(compress.New(compress.Config{Level: compress.LevelBestSpeed}))
+	app.Use(helmet.New(helmet.Config{
+		XSSProtection:      "1; mode=block",
+		ContentTypeNosniff: "nosniff",
+		XFrameOptions:      "SAMEORIGIN",
+		ReferrerPolicy:     "strict-origin-when-cross-origin",
+	}))
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
 		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
 		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		MaxAge:       86400,
 	}))
 	app.Use(limiter.New(limiter.Config{
-		Max:        100,
+		Max:        200,
 		Expiration: time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
 	}))
 
 	app.Use(func(c *fiber.Ctx) error {
 		start := time.Now()
 		err := c.Next()
-		c.Set("X-Process-Time", time.Since(start).String())
-		c.Set("X-Powered-By", "ResumeTake")
+		latency := time.Since(start)
+		c.Set("X-Process-Time", latency.String())
+		c.Set("X-Request-Id", c.Locals("requestid").(string))
 		return err
 	})
 
@@ -89,6 +108,7 @@ func main() {
 		return c.JSON(fiber.Map{
 			"status":    "healthy",
 			"timestamp": time.Now().Format(time.RFC3339),
+			"uptime":    time.Since(startTime).String(),
 			"requests":  store.Count(),
 			"version":   "1.0.0",
 		})
@@ -99,12 +119,16 @@ func main() {
 	v1.Post("/resumes", func(c *fiber.Ctx) error {
 		var body map[string]interface{}
 		if err := c.BodyParser(&body); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "参数解析失败"})
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "请求体格式错误"})
+		}
+		title, _ := body["title"].(string)
+		if title == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "VALIDATION_ERROR", "message": "title字段必填"})
 		}
 		id := uuid.New().String()
 		now := time.Now().Format(time.RFC3339)
 		data := map[string]interface{}{
-			"id": id, "title": body["title"], "content": body["content"],
+			"id": id, "title": title, "content": body["content"],
 			"created_at": now, "updated_at": now,
 		}
 		store.Save(id, data)
@@ -115,34 +139,39 @@ func main() {
 		if r, ok := store.Get(c.Params("id")); ok {
 			return c.JSON(fiber.Map{"success": true, "data": r})
 		}
-		return c.Status(404).JSON(fiber.Map{"error": "简历不存在"})
+		return c.Status(404).JSON(fiber.Map{"error": "NOT_FOUND", "message": "简历不存在"})
 	})
 
 	v1.Delete("/resumes/:id", func(c *fiber.Ctx) error {
 		if store.Delete(c.Params("id")) {
-			return c.JSON(fiber.Map{"success": true})
+			return c.JSON(fiber.Map{"success": true, "message": "删除成功"})
 		}
-		return c.Status(404).JSON(fiber.Map{"error": "简历不存在"})
+		return c.Status(404).JSON(fiber.Map{"error": "NOT_FOUND", "message": "简历不存在"})
 	})
 
 	v1.Post("/optimize", func(c *fiber.Ctx) error {
 		var body map[string]interface{}
 		if err := c.BodyParser(&body); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "参数解析失败"})
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "请求体格式错误"})
 		}
 		return c.JSON(fiber.Map{
 			"success": true,
 			"data": fiber.Map{
 				"optimized_content": fiber.Map{
-					"summary": "资深专业人士，拥有丰富的行业经验和卓越的业绩记录。擅长团队协作与项目管理。",
+					"summary": "资深专业人士，拥有丰富的行业经验和卓越的业绩记录。擅长团队协作与项目管理，具备出色的沟通能力和问题解决能力。",
 					"experience": []fiber.Map{{
 						"company": "示例科技有限公司", "position": "高级产品经理", "duration": "2020-至今",
-						"highlights": []string{"领导5人团队完成核心产品开发，用户增长150%", "优化产品流程，交付周期缩短40%", "建立数据分析体系，驱动产品迭代"},
+						"highlights": []string{
+							"领导5人团队完成核心产品开发，用户增长率达到150%",
+							"优化产品流程，将交付周期缩短40%",
+							"建立数据分析体系，驱动产品迭代决策",
+						},
 					}},
-					"skills": []string{"项目管理", "数据分析", "AI工具应用", "团队协作", "产品设计"},
+					"skills":    []string{"项目管理", "数据分析", "AI工具应用", "团队协作", "产品设计"},
+					"education": []fiber.Map{{"school": "知名大学", "degree": "硕士学位", "major": "计算机科学与技术"}},
 				},
 				"ats_score":   87.3,
-				"keywords":    []string{"项目管理", "数据分析", "AI应用", "团队协作", "产品优化"},
+				"keywords":    []string{"项目管理", "数据分析", "AI应用", "团队协作", "产品优化", "流程改进"},
 				"suggestions": []string{"建议添加更多量化成果", "突出AI工具使用经验", "个人简介加入核心关键词", "工作经历按STAR法则优化"},
 			},
 		})
@@ -162,5 +191,16 @@ func main() {
 		})
 	})
 
-	app.Listen(":" + port)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-quit
+		_ = app.Shutdown()
+	}()
+
+	startTime = time.Now()
+	_ = app.Listen(":" + port)
 }
+
+var startTime time.Time

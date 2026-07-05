@@ -73,7 +73,9 @@ func main() {
 
 	app.Use(recover.New())
 	app.Use(requestid.New())
-	app.Use(logger.New("${locals:requestid} ${method} ${path} ${status} - ${latency}"))
+	app.Use(logger.New(logger.Config{
+		Format: "${locals:requestid} ${method} ${path} ${status} - ${latency}\n",
+	}))
 	app.Use(compress.New(compress.Config{Level: compress.LevelBestSpeed}))
 	app.Use(helmet.New(helmet.Config{
 		XSSProtection:      "1; mode=block",

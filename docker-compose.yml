@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: resume-frontend
+    restart: unless-stopped
+    networks:
+      - resume-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: resume-backend
+    restart: unless-stopped
+    networks:
+      - resume-net
+    environment:
+      - APP_ENV=production
+
+  nginx:
+    image: nginx:alpine
+    container_name: resume-nginx
+    restart: unless-stopped
+    ports:
+      - "8088:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - resume-net
+    depends_on:
+      - frontend
+      - backend
+
+networks:
+  resume-net:
+    driver: bridge

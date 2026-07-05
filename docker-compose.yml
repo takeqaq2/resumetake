@@ -19,7 +19,7 @@ services:
     networks:
       - resume-net
     environment:
-      - APP_ENV=production
+      - PORT=8000
 
   nginx:
     image: nginx:alpine

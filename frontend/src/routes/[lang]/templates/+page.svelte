@@ -5,8 +5,14 @@
 
   let lang = $derived($page.params.lang);
   let t = $derived(getTranslation(lang));
-  let mounted = $state(false);
-  onMount(() => { mounted = true; });
+  onMount(() => {
+    document.querySelectorAll('.reveal').forEach(el => el.classList.add('js-ready'));
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.reveal.js-ready').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  });
 </script>
 
 <svelte:head>
@@ -18,15 +24,12 @@
   <meta property="og:description" content={t.meta.templatesDesc}>
 </svelte:head>
 
-<!-- Header -->
-<div class="editor-header" style="padding:2.5rem 0 3rem;position:relative;overflow:hidden">
+<div class="editor-header">
   <div class="orb orb-blue animate-float" style="width:200px;height:200px;top:-20%;left:10%"></div>
   <div class="orb orb-pink animate-float" style="width:160px;height:160px;bottom:-10%;right:15%;animation-delay:2s"></div>
-  <div class="container" style="position:relative">
-    <div class="{mounted ? 'animate-fade-in-up' : ''}" style="opacity:0;text-align:center">
-      <h1 style="font-size:clamp(1.75rem,3.5vw,2.25rem);font-weight:700;margin-bottom:0.75rem;color:var(--text)">{t.templates.title}</h1>
-      <p style="color:var(--text-secondary);max-width:32rem;margin:0 auto">{t.templates.subtitle}</p>
-    </div>
+  <div class="container" style="position:relative;text-align:center">
+    <h1 class="anim-hero anim-hero-1" style="font-size:clamp(1.75rem,3.5vw,2.25rem);font-weight:700;margin-bottom:0.75rem;color:var(--text)">{t.templates.title}</h1>
+    <p class="anim-hero anim-hero-2" style="color:var(--text-secondary);max-width:32rem;margin:0 auto">{t.templates.subtitle}</p>
   </div>
 </div>
 
@@ -41,7 +44,7 @@
         executive: 'linear-gradient(135deg,#374151,#111827)',
         minimal: 'linear-gradient(135deg,#f59e0b,#d97706)'
       }}
-      <a href="/{lang}/editor?template={tpl.id}" class="feature-card {mounted ? 'visible' : ''} reveal" style="padding:0;overflow:hidden;text-decoration:none;transition-delay:{i * 0.08}s;{mounted ? 'opacity:1;transform:none' : ''}">
+      <a href="/{lang}/editor?template={tpl.id}" class="feature-card reveal" style="padding:0;overflow:hidden;text-decoration:none;transition-delay:{i * 0.08}s">
         <div style="height:10rem;background:{gradients[tpl.id]||gradients.modern};display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
           <div style="position:absolute;inset:0;background:radial-gradient(circle at 30% 40%, rgba(255,255,255,0.15) 0%, transparent 60%)"></div>
           <span style="color:rgba(255,255,255,0.25);font-size:3.5rem;font-weight:700;position:relative;z-index:1">Aa</span>
@@ -54,3 +57,15 @@
     {/each}
   </div>
 </div>
+
+<style>
+  .anim-hero {
+    animation: heroFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .anim-hero-1 { animation-delay: 0.1s; }
+  .anim-hero-2 { animation-delay: 0.2s; }
+  @keyframes heroFadeIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>

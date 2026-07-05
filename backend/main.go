@@ -329,7 +329,7 @@ func getPrompt(lang string) string {
 	return prompts["en"]
 }
 
-func callGroqAI(resumeContent, targetJob, jobDescription, lang string) (map[string]interface{}, error) {
+func callGroqAI(resumeContent, targetJob, jobDescription, lang, moduleHints string) (map[string]interface{}, error) {
 	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" {
 		return nil, fmt.Errorf("AI service not configured")
@@ -360,7 +360,7 @@ func callGroqAI(resumeContent, targetJob, jobDescription, lang string) (map[stri
 		Model: "llama-3.3-70b-versatile",
 		Messages: []GroqMessage{
 			{Role: "system", Content: getPrompt(lang)},
-			{Role: "user", Content: userMsg},
+			{Role: "user", Content: userMsg + "\n\nOptimization focus:\n" + moduleHints},
 		},
 		MaxTokens:   2048,
 		Temperature: 0.7,
@@ -546,15 +546,39 @@ func main() {
 		if len(jobDesc) > 2000 {
 			jobDesc = jobDesc[:2000]
 		}
-		resumeContent, _ := json.Marshal(body["resume_content"])
-		if resumeContent == nil {
-			resumeContent = []byte("{}")
+
+		var resumeContent string
+		if rc, ok := body["resume_text"].(string); ok && rc != "" {
+			resumeContent = rc
+		} else if rc, _ := json.Marshal(body["resume_content"]); rc != nil && string(rc) != "null" {
+			resumeContent = string(rc)
 		}
 		if len(resumeContent) > 10000 {
 			resumeContent = resumeContent[:10000]
 		}
 
-		result, err := callGroqAI(string(resumeContent), targetJob, jobDesc, lang)
+		modules, _ := body["modules"].([]interface{})
+		if len(modules) == 0 {
+			modules = []interface{}{"ats", "star", "quant", "summary", "format"}
+		}
+
+		moduleHints := ""
+		for _, m := range modules {
+			switch m.(string) {
+			case "ats":
+				moduleHints += "1. Extract and match ATS keywords from the job description\n"
+			case "star":
+				moduleHints += "2. Rewrite work experience using STAR method (Situation-Task-Action-Result)\n"
+			case "quant":
+				moduleHints += "3. Add quantified achievements with specific metrics and data\n"
+			case "summary":
+				moduleHints += "4. Optimize professional summary to highlight core competencies\n"
+			case "format":
+				moduleHints += "5. Optimize resume structure, formatting, and layout\n"
+			}
+		}
+
+		result, err := callGroqAI(resumeContent, targetJob, jobDesc, lang, moduleHints)
 		if err != nil {
 			return c.Status(503).JSON(fiber.Map{
 				"success": false,

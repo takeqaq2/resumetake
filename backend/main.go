@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -34,6 +36,7 @@ type Store struct {
 
 var store = &Store{resumes: make(map[string]map[string]interface{})}
 var startTime time.Time
+var totalRequests int64
 
 func (s *Store) Save(id string, data map[string]interface{}) {
 	s.mu.Lock()
@@ -49,7 +52,7 @@ func (s *Store) Save(id string, data map[string]interface{}) {
 		}
 	}
 	s.resumes[id] = data
-	s.count++
+	atomic.AddInt64(&s.count, 1)
 }
 
 func (s *Store) Get(id string) (map[string]interface{}, bool) {
@@ -70,9 +73,7 @@ func (s *Store) Delete(id string) bool {
 }
 
 func (s *Store) Count() int64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.count
+	return atomic.LoadInt64(&s.count)
 }
 
 type GroqRequest struct {
@@ -96,6 +97,16 @@ type GroqResponse struct {
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
+}
+
+var httpClient = &http.Client{
+	Timeout: 30 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        10,
+		MaxIdleConnsPerHost: 5,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+	},
 }
 
 var prompts = map[string]string{
@@ -367,8 +378,7 @@ func callGroqAI(resumeContent, targetJob, jobDescription, lang string) (map[stri
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("AI service unavailable")
 	}
@@ -411,7 +421,7 @@ func main() {
 	startTime = time.Now()
 
 	app := fiber.New(fiber.Config{
-		AppName:       "ResumeTake API v1.1",
+		AppName:       "ResumeTake API v1.2",
 		BodyLimit:     10 * 1024 * 1024,
 		ServerHeader:  "ResumeTake",
 		StrictRouting: true,
@@ -448,6 +458,7 @@ func main() {
 
 	app.Use(func(c *fiber.Ctx) error {
 		start := time.Now()
+		atomic.AddInt64(&totalRequests, 1)
 		err := c.Next()
 		latency := time.Since(start)
 		c.Set("X-Process-Time", latency.String())
@@ -463,8 +474,10 @@ func main() {
 			"timestamp": time.Now().Format(time.RFC3339),
 			"uptime":    time.Since(startTime).String(),
 			"requests":  store.Count(),
-			"version":   "1.1.1",
+			"total":     atomic.LoadInt64(&totalRequests),
+			"version":   "1.2.0",
 			"ai":        "groq-free",
+			"memory":    fmt.Sprintf("%d MB", getMemUsage()),
 		})
 	})
 
@@ -540,10 +553,6 @@ func main() {
 		if len(resumeContent) > 10000 {
 			resumeContent = resumeContent[:10000]
 		}
-
-		store.mu.Lock()
-		store.count++
-		store.mu.Unlock()
 
 		result, err := callGroqAI(string(resumeContent), targetJob, jobDesc, lang)
 		if err != nil {
@@ -656,4 +665,10 @@ func main() {
 	}()
 
 	_ = app.Listen(":" + port)
+}
+
+func getMemUsage() uint64 {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.Alloc / 1024 / 1024
 }

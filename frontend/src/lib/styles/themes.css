@@ -3,6 +3,14 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
+/* Performance: GPU-accelerated animations */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  .orb, .hero-mesh::before, .hero-mesh::after { will-change: transform; }
+  .feature-card, .card, .btn { will-change: transform, box-shadow; contain: layout style; }
+  .glass-header { contain: layout style paint; }
+}
+
 :root {
   --bg: #fafbff;
   --bg-surface: #f1f5f9;
@@ -209,6 +217,19 @@ a { text-decoration: none; color: inherit; }
 .delay-4 { animation-delay: 0.4s; }
 .delay-5 { animation-delay: 0.5s; }
 .delay-6 { animation-delay: 0.6s; }
+
+/* Reduced motion: disable all animations for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .orb, .hero-mesh::before, .hero-mesh::after { animation: none !important; }
+  .feature-card:hover, .card:hover, .btn:hover { transform: none !important; }
+  .scroll-progress { display: none; }
+}
 
 /* ===== Mesh Gradient Hero Background ===== */
 .hero-mesh {

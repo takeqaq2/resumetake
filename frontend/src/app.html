@@ -3,32 +3,50 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Resume Builder - ResumeTake | Smart Resume Optimization</title>
-  <meta name="description" content="AI-powered resume optimizer. Generate professional resumes, match ATS keywords, and boost your job search success. Free online resume builder with PDF export.">
-  <meta name="keywords" content="AI resume builder,resume optimizer,ATS resume,free resume tool,online resume editor,professional resume,job search">
-  <meta name="robots" content="index, follow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+  <meta name="author" content="ResumeTake">
+  <meta name="theme-color" content="#2563eb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0f1a" media="(prefers-color-scheme: dark)">
+  <link rel="alternate" hreflang="x-default" href="https://resume.takee.top/en">
+  <link rel="alternate" hreflang="zh" href="https://resume.takee.top/zh">
+  <link rel="alternate" hreflang="en" href="https://resume.takee.top/en">
+  <link rel="alternate" hreflang="ja" href="https://resume.takee.top/ja">
+  <link rel="alternate" hreflang="ko" href="https://resume.takee.top/ko">
+  <link rel="alternate" hreflang="es" href="https://resume.takee.top/es">
+  <link rel="alternate" hreflang="pt" href="https://resume.takee.top/pt">
+  <link rel="alternate" hreflang="fr" href="https://resume.takee.top/fr">
+  <link rel="alternate" hreflang="de" href="https://resume.takee.top/de">
+  <link rel="alternate" hreflang="ar" href="https://resume.takee.top/ar">
+  <link rel="alternate" hreflang="hi" href="https://resume.takee.top/hi">
   <link rel="canonical" href="https://resume.takee.top/">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://resume.takee.top/">
-  <meta property="og:title" content="AI Resume Builder - ResumeTake">
-  <meta property="og:description" content="AI-powered resume optimizer. Generate professional resumes, match ATS keywords.">
+  <meta property="og:title" content="ResumeTake - AI Resume Builder & Optimizer">
+  <meta property="og:description" content="AI-powered resume optimizer. Generate professional resumes, match ATS keywords, and boost your job search success. Free online resume builder with PDF export.">
   <meta property="og:image" content="https://resume.takee.top/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta property="og:site_name" content="ResumeTake">
+  <meta property="og:locale" content="en_US">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="AI Resume Builder - ResumeTake">
-  <meta name="twitter:description" content="AI-powered resume optimizer. Generate professional resumes.">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta name="twitter:title" content="ResumeTake - AI Resume Builder & Optimizer">
+  <meta name="twitter:description" content="AI-powered resume optimizer. Generate professional resumes, match ATS keywords.">
+  <meta name="twitter:image" content="https://resume.takee.top/og-image.png">
   <script type="application/ld+json">
   {
     "@context":"https://schema.org",
     "@type":"WebApplication",
     "name":"ResumeTake AI Resume Builder",
     "url":"https://resume.takee.top",
-    "description":"AI-powered resume optimizer with ATS keyword matching",
+    "description":"AI-powered resume optimizer with ATS keyword matching and professional templates",
     "applicationCategory":"BusinessApplication",
     "operatingSystem":"Web",
     "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
-    "inLanguage":["en","zh","ja","ko","es","pt","fr","de","ar","hi"]
+    "inLanguage":["en","zh","ja","ko","es","pt","fr","de","ar","hi"],
+    "featureList":["AI Resume Optimization","ATS Keyword Matching","Professional Templates","PDF Export","Multi-language Support"]
   }
   </script>
   <script type="application/ld+json">
@@ -42,9 +60,21 @@
     ]
   }
   </script>
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"BreadcrumbList",
+    "itemListElement":[
+      {"@type":"ListItem","position":1,"name":"Home","item":"https://resume.takee.top/en"},
+      {"@type":"ListItem","position":2,"name":"Editor","item":"https://resume.takee.top/en/editor"},
+      {"@type":"ListItem","position":3,"name":"Templates","item":"https://resume.takee.top/en/templates"}
+    ]
+  }
+  </script>
   %sveltekit.head%
 </head>
 <body>
+  <a href="#main-content" style="position:absolute;top:-40px;left:0;background:var(--primary);color:white;padding:8px 16px;z-index:100;transition:top 0.2s" onfocus="this.style.top='0'" onblur="this.style.top='-40px'">Skip to content</a>
   <div id="app">%sveltekit.body%</div>
 </body>
 </html>

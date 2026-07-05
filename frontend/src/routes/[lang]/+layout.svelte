@@ -52,15 +52,15 @@
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
         <div data-lang-menu style="position:relative">
-          <button class="btn btn-secondary" style="padding:0.5rem 0.75rem;font-size:0.8125rem;display:flex;align-items:center;gap:0.375rem" onclick={() => showLangMenu = !showLangMenu}>
+          <button class="btn btn-secondary" style="padding:0.5rem 0.75rem;font-size:0.8125rem;display:flex;align-items:center;gap:0.375rem" onclick={() => showLangMenu = !showLangMenu} aria-expanded={showLangMenu} aria-haspopup="true" aria-label={t.nav.language}>
             <span>{langInfo.flag}</span>
             <span>{langInfo.name}</span>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="transition:transform 0.2s;{showLangMenu ? 'transform:rotate(180deg)' : ''}"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="transition:transform 0.2s;{showLangMenu ? 'transform:rotate(180deg)' : ''}" aria-hidden="true"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           {#if showLangMenu}
-            <div class="lang-menu">
+            <div class="lang-menu" role="menu">
               {#each Object.entries(LANGUAGES) as [code, info]}
-                <button class="{code===lang ? 'active' : ''}" onclick={() => switchLanguage(code)}>
+                <button class="{code===lang ? 'active' : ''}" onclick={() => switchLanguage(code)} role="menuitem">
                   <span style="font-size:1rem">{info.flag}</span>
                   <span>{info.name}</span>
                 </button>
@@ -72,7 +72,7 @@
     </nav>
   </header>
 
-  <main style="flex:1;min-height:calc(100vh - 4rem)">
+  <main id="main-content" style="flex:1;min-height:calc(100vh - 4rem)">
     {@render children()}
   </main>
 

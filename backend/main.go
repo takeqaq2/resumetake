@@ -24,6 +24,8 @@ import (
 	"github.com/google/uuid"
 )
 
+const maxResumes = 5000
+
 type Store struct {
 	mu      sync.RWMutex
 	resumes map[string]map[string]interface{}
@@ -36,6 +38,16 @@ var startTime time.Time
 func (s *Store) Save(id string, data map[string]interface{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if len(s.resumes) >= maxResumes {
+		oldest := ""
+		for k := range s.resumes {
+			oldest = k
+			break
+		}
+		if oldest != "" {
+			delete(s.resumes, oldest)
+		}
+	}
 	s.resumes[id] = data
 	s.count++
 }
@@ -64,10 +76,10 @@ func (s *Store) Count() int64 {
 }
 
 type GroqRequest struct {
-	Model    string          `json:"model"`
-	Messages []GroqMessage   `json:"messages"`
-	MaxTokens int           `json:"max_tokens,omitempty"`
-	Temperature float64     `json:"temperature,omitempty"`
+	Model       string        `json:"model"`
+	Messages    []GroqMessage `json:"messages"`
+	MaxTokens   int           `json:"max_tokens,omitempty"`
+	Temperature float64       `json:"temperature,omitempty"`
 }
 
 type GroqMessage struct {
@@ -192,6 +204,111 @@ JSON 형식으로 반환:
   "keywords": ["كلمة1", "كلمة2"],
   "suggestions": ["اقتراح1", "اقتراح2"]
 }`,
+	"es": `Eres un consultor profesional de optimización de CV. Optimiza el CV basándote en la información del usuario y el puesto objetivo.
+
+Requisitos:
+1. Salida en español
+2. Usa el método STAR (Situación-Tarea-Acción-Resultado)
+3. Añade logros cuantificados
+4. Extrae y coincide palabras clave ATS
+5. Optimiza el resumen profesional
+
+Formato JSON de retorno:
+{
+  "optimized_content": {
+    "summary": "Resumen profesional optimizado",
+    "experience": [{"company": "Empresa", "position": "Puesto", "duration": "Período", "highlights": ["Logro 1", "Logro 2"]}],
+    "skills": ["Habilidad 1", "Habilidad 2"],
+    "education": [{"school": "Universidad", "degree": "Título", "major": "Especialidad"}]
+  },
+  "ats_score": 85.0,
+  "keywords": ["palabra1", "palabra2"],
+  "suggestions": ["sugerencia1", "sugerencia2"]
+}`,
+	"pt": `Você é um consultor profissional de otimização de currículo. Otimize o currículo com base nas informações do usuário e na vaga-alvo.
+
+Requisitos:
+1. Saída em português
+2. Use o método STAR (Situação-Tarefa-Ação-Resultado)
+3. Adicione conquistas quantificadas
+4. Extraia e combine palavras-chave ATS
+5. Otimize o resumo profissional
+
+Formato JSON de retorno:
+{
+  "optimized_content": {
+    "summary": "Resumo profissional otimizado",
+    "experience": [{"company": "Empresa", "position": "Cargo", "duration": "Período", "highlights": ["Conquista 1", "Conquista 2"]}],
+    "skills": ["Habilidade 1", "Habilidade 2"],
+    "education": [{"school": "Universidade", "degree": "Diploma", "major": "Especialização"}]
+  },
+  "ats_score": 85.0,
+  "keywords": ["palavra1", "palavra2"],
+  "suggestions": ["sugestão1", "sugestão2"]
+}`,
+	"fr": `Vous êtes un consultant professionnel en optimisation de CV. Optimisez le CV en fonction des informations de l'utilisateur et du poste cible.
+
+Exigences :
+1. Sortie en français
+2. Utilisez la méthode STAR (Situation-Tâche-Action-Résultat)
+3. Ajoutez des réalisations quantifiées
+4. Extrapolez et correspondez les mots-clés ATS
+5. Optimisez le résumé professionnel
+
+Format JSON de retour :
+{
+  "optimized_content": {
+    "summary": "Résumé professionnel optimisé",
+    "experience": [{"company": "Entreprise", "position": "Poste", "duration": "Période", "highlights": ["Réalisation 1", "Réalisation 2"]}],
+    "skills": ["Compétence 1", "Compétence 2"],
+    "education": [{"school": "Université", "degree": "Diplôme", "major": "Spécialité"}]
+  },
+  "ats_score": 85.0,
+  "keywords": ["mot1", "mot2"],
+  "suggestions": ["suggestion1", "suggestion2"]
+}`,
+	"de": `Sie sind ein professioneller Lebenslauf-Optimierungsberater. Optimieren Sie den Lebenslauf basierend auf den Informationen des Benutzers und der Zielposition.
+
+Anforderungen:
+1. Ausgabe auf Deutsch
+2. Verwenden Sie die STAR-Methode (Situation-Task-Aktion-Ergebnis)
+3. Fügen Sie quantifizierte Erfolge hinzu
+4. Extrahieren und passen Sie ATS-Schlüsselwörter an
+5. Optimieren Sie das Berufsprofil
+
+JSON-Rückgabeformat:
+{
+  "optimized_content": {
+    "summary": "Optimiertes Berufsprofil",
+    "experience": [{"company": "Unternehmen", "position": "Position", "duration": "Zeitraum", "highlights": ["Erfolg 1", "Erfolg 2"]}],
+    "skills": ["Fähigkeit 1", "Fähigkeit 2"],
+    "education": [{"school": "Universität", "degree": "Abschluss", "major": "Fachgebiet"}]
+  },
+  "ats_score": 85.0,
+  "keywords": ["Schlüsselwort1", "Schlüsselwort2"],
+  "suggestions": ["Vorschlag1", "Vorschlag2"]
+}`,
+	"hi": `आप एक पेशेवर रिज़्यूमे ऑप्टिमाइज़ेशन सलाहकार हैं। उपयोगकर्ता द्वारा प्रदान की गई जानकारी और लक्षित पद के आधार पर रिज़्यूमे को ऑप्टिमाइज़ करें।
+
+आवश्यकताएँ:
+1. हिंदी में आउटपुट
+2. STAR विधि (स्थिति-कार्य-कार्रवाई-परिणाम) का उपयोग करें
+3. मात्रात्मक उपलब्धियाँ जोड़ें
+4. ATS कीवर्ड निकालें और मैच करें
+5. पेशेवर सारांश ऑप्टिमाइज़ करें
+
+JSON प्रारूप में वापस करें:
+{
+  "optimized_content": {
+    "summary": "ऑप्टिमाइज़ पेशेवर सारांश",
+    "experience": [{"company": "कंपनी", "position": "पद", "duration": "अवधि", "highlights": ["उपलब्धि 1", "उपलब्धि 2"]}],
+    "skills": ["कौशल 1", "कौशल 2"],
+    "education": [{"school": "विश्वविद्यालय", "degree": "डिग्री", "major": "विषय"}]
+  },
+  "ats_score": 85.0,
+  "keywords": ["कीवर्ड1", "कीवर्ड2"],
+  "suggestions": ["सुझाव1", "सुझाव2"]
+}`,
 }
 
 func getPrompt(lang string) string {
@@ -204,18 +321,28 @@ func getPrompt(lang string) string {
 func callGroqAI(resumeContent, targetJob, jobDescription, lang string) (map[string]interface{}, error) {
 	apiKey := os.Getenv("GROQ_API_KEY")
 	if apiKey == "" {
-		return nil, fmt.Errorf("GROQ_API_KEY not set")
+		return nil, fmt.Errorf("AI service not configured")
 	}
 
-	userMsg := fmt.Sprintf("目标职位: %s\n职位描述: %s\n简历内容: %s", targetJob, jobDescription, resumeContent)
-	if lang == "en" {
-		userMsg = fmt.Sprintf("Target Position: %s\nJob Description: %s\nResume Content: %s", targetJob, jobDescription, resumeContent)
+	userMsg := fmt.Sprintf("Target Position: %s\nJob Description: %s\nResume Content: %s", targetJob, jobDescription, resumeContent)
+	if lang == "zh" {
+		userMsg = fmt.Sprintf("目标职位: %s\n职位描述: %s\n简历内容: %s", targetJob, jobDescription, resumeContent)
 	} else if lang == "ja" {
 		userMsg = fmt.Sprintf("希望職種: %s\n職務記述書: %s\n履歴書内容: %s", targetJob, jobDescription, resumeContent)
 	} else if lang == "ko" {
 		userMsg = fmt.Sprintf("희망 직종: %s\n직무 설명: %s\n이력서 내용: %s", targetJob, jobDescription, resumeContent)
 	} else if lang == "ar" {
 		userMsg = fmt.Sprintf("المنصب المستهدف: %s\nوصف الوظيفة: %s\nمحتوى السيرة الذاتية: %s", targetJob, jobDescription, resumeContent)
+	} else if lang == "es" {
+		userMsg = fmt.Sprintf("Puesto objetivo: %s\nDescripción del puesto: %s\nContenido del CV: %s", targetJob, jobDescription, resumeContent)
+	} else if lang == "pt" {
+		userMsg = fmt.Sprintf("Cargo alvo: %s\nDescrição da vaga: %s\nConteúdo do currículo: %s", targetJob, jobDescription, resumeContent)
+	} else if lang == "fr" {
+		userMsg = fmt.Sprintf("Poste cible: %s\nDescription du poste: %s\nContenu du CV: %s", targetJob, jobDescription, resumeContent)
+	} else if lang == "de" {
+		userMsg = fmt.Sprintf("Zielposition: %s\nStellenbeschreibung: %s\nLebenslauf-Inhalt: %s", targetJob, jobDescription, resumeContent)
+	} else if lang == "hi" {
+		userMsg = fmt.Sprintf("लक्षित पद: %s\nनौकरी विवरण: %s\nरिज़्यूमे सामग्री: %s", targetJob, jobDescription, resumeContent)
 	}
 
 	reqBody := GroqRequest{
@@ -228,28 +355,39 @@ func callGroqAI(resumeContent, targetJob, jobDescription, lang string) (map[stri
 		Temperature: 0.7,
 	}
 
-	jsonData, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(jsonData))
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("request preparation failed")
+	}
+
+	req, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("request creation failed")
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("AI service unavailable")
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read AI response")
+	}
+
 	var groqResp GroqResponse
 	if err := json.Unmarshal(body, &groqResp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid AI response format")
 	}
 	if groqResp.Error != nil {
-		return nil, fmt.Errorf("groq error: %s", groqResp.Error.Message)
+		return nil, fmt.Errorf("AI service error")
 	}
 	if len(groqResp.Choices) == 0 {
-		return nil, fmt.Errorf("no choices returned")
+		return nil, fmt.Errorf("no AI response generated")
 	}
 
 	content := groqResp.Choices[0].Message.Content
@@ -260,7 +398,7 @@ func callGroqAI(resumeContent, targetJob, jobDescription, lang string) (map[stri
 
 	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		return nil, fmt.Errorf("failed to parse AI response: %v", err)
+		return nil, fmt.Errorf("failed to parse AI result")
 	}
 	return result, nil
 }
@@ -273,7 +411,7 @@ func main() {
 	startTime = time.Now()
 
 	app := fiber.New(fiber.Config{
-		AppName:       "ResumeTake API v1.0",
+		AppName:       "ResumeTake API v1.1",
 		BodyLimit:     10 * 1024 * 1024,
 		ServerHeader:  "ResumeTake",
 		StrictRouting: true,
@@ -292,15 +430,16 @@ func main() {
 		ContentTypeNosniff: "nosniff",
 		XFrameOptions:      "SAMEORIGIN",
 		ReferrerPolicy:     "strict-origin-when-cross-origin",
+		HSTSMaxAge:         31536000,
 	}))
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
+		AllowOrigins: "https://resume.takee.top,http://localhost:5173",
 		AllowHeaders: "Origin,Content-Type,Accept,Authorization",
-		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		AllowMethods: "GET,POST,OPTIONS",
 		MaxAge:       86400,
 	}))
 	app.Use(limiter.New(limiter.Config{
-		Max:        200,
+		Max:        100,
 		Expiration: time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {
 			return c.IP()
@@ -312,7 +451,9 @@ func main() {
 		err := c.Next()
 		latency := time.Since(start)
 		c.Set("X-Process-Time", latency.String())
-		c.Set("X-Request-Id", c.Locals("requestid").(string))
+		if rid, ok := c.Locals("requestid").(string); ok {
+			c.Set("X-Request-Id", rid)
+		}
 		return err
 	})
 
@@ -322,7 +463,7 @@ func main() {
 			"timestamp": time.Now().Format(time.RFC3339),
 			"uptime":    time.Since(startTime).String(),
 			"requests":  store.Count(),
-			"version":   "1.1.0",
+			"version":   "1.1.1",
 			"ai":        "groq-free",
 		})
 	})
@@ -335,8 +476,11 @@ func main() {
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
 		}
 		title, _ := body["title"].(string)
-		if title == "" {
+		if strings.TrimSpace(title) == "" {
 			return c.Status(400).JSON(fiber.Map{"error": "VALIDATION_ERROR", "message": "title is required"})
+		}
+		if len(title) > 200 {
+			return c.Status(400).JSON(fiber.Map{"error": "VALIDATION_ERROR", "message": "title too long"})
 		}
 		id := uuid.New().String()
 		now := time.Now().Format(time.RFC3339)
@@ -362,7 +506,13 @@ func main() {
 		return c.Status(404).JSON(fiber.Map{"error": "NOT_FOUND", "message": "Resume not found"})
 	})
 
-	v1.Post("/optimize", func(c *fiber.Ctx) error {
+	v1.Post("/optimize", limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+	}), func(c *fiber.Ctx) error {
 		var body map[string]interface{}
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
@@ -371,11 +521,24 @@ func main() {
 		if lang == "" {
 			lang = "en"
 		}
+		validLangs := map[string]bool{"zh": true, "en": true, "ja": true, "ko": true, "ar": true, "es": true, "pt": true, "fr": true, "de": true, "hi": true}
+		if !validLangs[lang] {
+			lang = "en"
+		}
 		targetJob, _ := body["target_job"].(string)
 		jobDesc, _ := body["job_description"].(string)
+		if len(targetJob) > 500 {
+			targetJob = targetJob[:500]
+		}
+		if len(jobDesc) > 2000 {
+			jobDesc = jobDesc[:2000]
+		}
 		resumeContent, _ := json.Marshal(body["resume_content"])
 		if resumeContent == nil {
 			resumeContent = []byte("{}")
+		}
+		if len(resumeContent) > 10000 {
+			resumeContent = resumeContent[:10000]
 		}
 
 		store.mu.Lock()
@@ -384,9 +547,9 @@ func main() {
 
 		result, err := callGroqAI(string(resumeContent), targetJob, jobDesc, lang)
 		if err != nil {
-			return c.JSON(fiber.Map{
+			return c.Status(503).JSON(fiber.Map{
 				"success": false,
-				"error":   "AI optimization failed: " + err.Error(),
+				"error":   "Service temporarily unavailable, please try again later",
 			})
 		}
 
@@ -427,6 +590,54 @@ func main() {
 				{"id": "academic", "name": "아카데믹", "description": "교육 및 연구 직무용"},
 				{"id": "executive", "name": "임원급", "description": "고위 경영진용"},
 				{"id": "minimal", "name": "미니멀", "description": "깔끔하고 범용적"},
+			},
+			"es": {
+				{"id": "professional", "name": "Profesional", "description": "Para puestos tradicionales y empresariales"},
+				{"id": "modern", "name": "Moderno", "description": "Para puestos tecnológicos"},
+				{"id": "creative", "name": "Creativo", "description": "Para puestos de diseño y creativos"},
+				{"id": "academic", "name": "Académico", "description": "Para puestos educativos e investigación"},
+				{"id": "executive", "name": "Ejecutivo", "description": "Para puestos de alta dirección"},
+				{"id": "minimal", "name": "Minimalista", "description": "Limpio y versátil"},
+			},
+			"pt": {
+				{"id": "professional", "name": "Profissional", "description": "Para cargos tradicionais e empresariais"},
+				{"id": "modern", "name": "Moderno", "description": "Para cargos de tecnologia"},
+				{"id": "creative", "name": "Criativo", "description": "Para cargos de design e criativos"},
+				{"id": "academic", "name": "Acadêmico", "description": "Para cargos educacionais e de pesquisa"},
+				{"id": "executive", "name": "Executivo", "description": "Para cargos de alta diretoria"},
+				{"id": "minimal", "name": "Minimalista", "description": "Limpo e versátil"},
+			},
+			"fr": {
+				{"id": "professional", "name": "Professionnel", "description": "Pour les postes traditionnels et d'entreprise"},
+				{"id": "modern", "name": "Moderne", "description": "Pour les postes technologiques"},
+				{"id": "creative", "name": "Créatif", "description": "Pour les postes de design et créatifs"},
+				{"id": "academic", "name": "Académique", "description": "Pour les postes éducatifs et de recherche"},
+				{"id": "executive", "name": "Exécutif", "description": "Pour les postes de haute direction"},
+				{"id": "minimal", "name": "Minimaliste", "description": "Épuré et polyvalent"},
+			},
+			"de": {
+				{"id": "professional", "name": "Professionell", "description": "Für traditionelle und Geschäftspositionen"},
+				{"id": "modern", "name": "Modern", "description": "Für Tech- und Startup-Positionen"},
+				{"id": "creative", "name": "Kreativ", "description": "Für Design- und Kreativpositionen"},
+				{"id": "academic", "name": "Akademisch", "description": "Für Bildungs- und Forschungspositionen"},
+				{"id": "executive", "name": "Führungskraft", "description": "Für Senior-Management-Positionen"},
+				{"id": "minimal", "name": "Minimalistisch", "description": "Aufgeräumt und vielseitig"},
+			},
+			"ar": {
+				{"id": "professional", "name": "احترافي", "description": "للمناصب التقليدية والتجارية"},
+				{"id": "modern", "name": "عصري", "description": "للمناصب التقنية"},
+				{"id": "creative", "name": "إبداعي", "description": "لمناصب التصميم والإبداع"},
+				{"id": "academic", "name": "أكاديمي", "description": "لمناصب التعليم والبحث"},
+				{"id": "executive", "name": "تنفيذي", "description": "لمناصب الإدارة العليا"},
+				{"id": "minimal", "name": "بسيط", "description": "أنيق وعملي"},
+			},
+			"hi": {
+				{"id": "professional", "name": "पेशेवर", "description": "पारंपरिक और व्यावसायिक पदों के लिए"},
+				{"id": "modern", "name": "आधुनिक", "description": "तकनीकी और स्टार्टअप पदों के लिए"},
+				{"id": "creative", "name": "रचनात्मक", "description": "डिज़ाइन और रचनात्मक पदों के लिए"},
+				{"id": "academic", "name": "शैक्षणिक", "description": "शिक्षा और अनुसंधान पदों के लिए"},
+				{"id": "executive", "name": "कार्यकारी", "description": "वरिष्ठ प्रबंधन पदों के लिए"},
+				{"id": "minimal", "name": "न्यूनतम", "description": "साफ और बहुमुखी"},
 			},
 		}
 		data, ok := templateData[lang]

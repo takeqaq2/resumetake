@@ -16,7 +16,14 @@
 
   onMount(() => { mounted = true; });
 
+  let error = $state('');
+
   async function optimize() {
+    if (!targetJob.trim()) {
+      error = lang === 'zh' ? '请输入目标职位' : 'Please enter a target position';
+      return;
+    }
+    error = '';
     isOptimizing = true;
     try {
       const res = await fetch('/api/v1/optimize', {
@@ -25,9 +32,15 @@
         body: JSON.stringify({ resume_content: resume, target_job: targetJob, job_description: jobDescription, lang })
       });
       const data = await res.json();
-      result = data.data;
-      tab = 'result';
-    } catch { alert(lang === 'zh' ? '优化失败，请重试' : 'Optimization failed, please try again'); }
+      if (data.success && data.data) {
+        result = data.data;
+        tab = 'result';
+      } else {
+        error = data.error || (lang === 'zh' ? '优化失败，请重试' : 'Optimization failed, please try again');
+      }
+    } catch {
+      error = lang === 'zh' ? '网络错误，请检查连接后重试' : 'Network error, please check your connection and try again';
+    }
     finally { isOptimizing = false; }
   }
 </script>
@@ -99,6 +112,11 @@
         </div>
       </div>
 
+      {#if error}
+        <div class="animate-fade-in" style="padding:0.75rem 1rem;border-radius:var(--radius);background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#ef4444;font-size:0.875rem;margin-bottom:1rem;display:flex;align-items:center;gap:0.5rem">
+          <span>⚠️</span> {error}
+        </div>
+      {/if}
       <button class="optimize-btn {mounted ? 'animate-fade-in-up delay-3' : ''}" style="opacity:0" onclick={optimize} disabled={isOptimizing}>
         {#if isOptimizing}
           <span style="display:flex;align-items:center;gap:0.5rem;position:relative;z-index:1">
@@ -137,14 +155,14 @@
                 <span style="font-weight:600;color:#059669">{t.editor.atsScore}</span>
                 <p style="font-size:0.8125rem;color:#059669;opacity:0.7;margin-top:0.125rem">{lang === 'zh' ? 'AI分析结果' : 'AI Analysis Result'}</p>
               </div>
-              <span style="font-size:2rem;font-weight:800;color:#059669">{result.ats_score}%</span>
+              <span style="font-size:2rem;font-weight:800;color:#059669">{result.ats_score || 0}%</span>
             </div>
             <div>
               <h4 style="font-weight:500;margin-bottom:0.75rem;color:var(--text);display:flex;align-items:center;gap:0.375rem">
                 <span>🔑</span> {t.editor.keywords}
               </h4>
               <div style="display:flex;flex-wrap:wrap;gap:0.5rem">
-                {#each result.keywords||[] as kw}
+                {#each (result.keywords || []) as kw}
                   <span class="keyword-tag">{kw}</span>
                 {/each}
               </div>
@@ -154,7 +172,7 @@
                 <span>💡</span> {t.editor.suggestions}
               </h4>
               <ul style="list-style:none;display:flex;flex-direction:column;gap:0.625rem">
-                {#each result.suggestions||[] as s}
+                {#each (result.suggestions || []) as s}
                   <li style="font-size:0.9375rem;color:var(--text-secondary);display:flex;gap:0.625rem;align-items:flex-start;line-height:1.5">
                     <span style="color:var(--primary);margin-top:0.125rem;flex-shrink:0">→</span>
                     <span>{s}</span>

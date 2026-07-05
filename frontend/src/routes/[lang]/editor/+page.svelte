@@ -98,8 +98,9 @@
     <div class="editor-left">
       <!-- Resume Text -->
       <div class="editor-card anim-hero anim-hero-3">
-        <label class="label" style="font-weight:600;color:var(--text);font-size:0.9375rem;margin-bottom:0.75rem;display:block">📋 {t.editor.pasteResume}</label>
+        <label for="resume-text" class="label" style="font-weight:600;color:var(--text);font-size:0.9375rem;margin-bottom:0.75rem;display:block">📋 {t.editor.pasteResume}</label>
         <textarea
+          id="resume-text"
           class="input resume-textarea"
           rows="10"
           placeholder={t.editor.pasteResumePlaceholder}
@@ -111,18 +112,18 @@
 
       <!-- Target Job -->
       <div class="editor-card anim-hero anim-hero-4">
-        <label class="label" style="font-weight:600;color:var(--text);font-size:0.9375rem;margin-bottom:0.75rem;display:block">🎯 {t.editor.targetJob}</label>
-        <input class="input" placeholder={t.editor.targetJobPlaceholder} bind:value={targetJob}>
+        <label for="target-job" class="label" style="font-weight:600;color:var(--text);font-size:0.9375rem;margin-bottom:0.75rem;display:block">🎯 {t.editor.targetJob}</label>
+        <input id="target-job" class="input" placeholder={t.editor.targetJobPlaceholder} bind:value={targetJob}>
         <div style="margin-top:0.75rem">
-          <label class="label" style="font-size:0.8125rem">{t.editor.jobDesc}</label>
-          <textarea class="input" rows="3" placeholder={t.editor.jobDescPlaceholder} bind:value={jobDesc} style="resize:vertical;font-size:0.8125rem"></textarea>
+          <label for="job-desc" class="label" style="font-size:0.8125rem">{t.editor.jobDesc}</label>
+          <textarea id="job-desc" class="input" rows="3" placeholder={t.editor.jobDescPlaceholder} bind:value={jobDesc} style="resize:vertical;font-size:0.8125rem"></textarea>
         </div>
       </div>
 
       <!-- Optimization Modules -->
       <div class="editor-card anim-hero anim-hero-5">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
-          <label style="font-weight:600;color:var(--text);font-size:0.9375rem">⚙️ {t.editor.optModules}</label>
+          <span id="opt-modules-label" style="font-weight:600;color:var(--text);font-size:0.9375rem">⚙️ {t.editor.optModules}</span>
           <button class="btn-link" onclick={toggleAll}>{allSelected ? t.editor.deselectAll : t.editor.selectAll}</button>
         </div>
         <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.75rem">{t.editor.optModulesHint}</p>
@@ -132,7 +133,7 @@
               <input type="checkbox" bind:checked={modules[m]} style="width:1.125rem;height:1.125rem;accent-color:var(--primary);cursor:pointer">
               <div>
                 <span class="module-label">{t.editor[`module_${m}`]}</span>
-                <span class="module-desc">{t.editor[`${m}_desc`]}</span>
+                <span class="module-desc">{t.editor[`module_${m}_desc`]}</span>
               </div>
             </label>
           {/each}

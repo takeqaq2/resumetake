@@ -4,5 +4,7 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 RUN npm run build
+ENV PORT=8080
+ENV HOST=0.0.0.0
 EXPOSE 8080
-CMD ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["node", "build"]

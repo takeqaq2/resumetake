@@ -21,7 +21,7 @@
 </script>
 
 <svelte:head>
-  <html lang={lang} dir={langInfo.dir} />
+  <html lang={lang} dir={langInfo.dir}></html>
   <meta name="theme-color" content={lang === 'zh' ? '#dc2626' : lang === 'ja' ? '#1a1a2e' : lang === 'ko' ? '#6366f1' : '#2563eb'}>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <meta property="og:locale" content={langInfo.locale}>

@@ -46,19 +46,19 @@
       <div class="card">
         <h2 style="font-weight:600;margin-bottom:1.25rem;color:var(--text)">{t.editor.basicInfo}</h2>
         <div style="display:flex;flex-direction:column;gap:1rem">
-          <div><label class="label">{t.editor.name}</label><input class="input" placeholder={t.editor.namePlaceholder} bind:value={resume.name}></div>
+          <div><label class="label" for="rname">{t.editor.name}</label><input id="rname" class="input" placeholder={t.editor.namePlaceholder} bind:value={resume.name}></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-            <div><label class="label">{t.editor.email}</label><input type="email" class="input" placeholder={t.editor.emailPlaceholder} bind:value={resume.email}></div>
-            <div><label class="label">{t.editor.phone}</label><input type="tel" class="input" placeholder={t.editor.phonePlaceholder} bind:value={resume.phone}></div>
+            <div><label class="label" for="remail">{t.editor.email}</label><input id="remail" type="email" class="input" placeholder={t.editor.emailPlaceholder} bind:value={resume.email}></div>
+            <div><label class="label" for="rphone">{t.editor.phone}</label><input id="rphone" type="tel" class="input" placeholder={t.editor.phonePlaceholder} bind:value={resume.phone}></div>
           </div>
-          <div><label class="label">{t.editor.summary}</label><textarea class="input" rows="4" placeholder={t.editor.summaryPlaceholder} bind:value={resume.summary}></textarea></div>
+          <div><label class="label" for="rsummary">{t.editor.summary}</label><textarea id="rsummary" class="input" rows="4" placeholder={t.editor.summaryPlaceholder} bind:value={resume.summary}></textarea></div>
         </div>
       </div>
       <div class="card">
         <h2 style="font-weight:600;margin-bottom:1.25rem;color:var(--text)">{t.editor.targetJob}</h2>
         <div style="display:flex;flex-direction:column;gap:1rem">
-          <div><label class="label">{t.editor.targetJob}</label><input class="input" placeholder={t.editor.targetJobPlaceholder} bind:value={targetJob}></div>
-          <div><label class="label">{t.editor.jobDesc}</label><textarea class="input" rows="4" placeholder={t.editor.jobDescPlaceholder} bind:value={jobDescription}></textarea></div>
+          <div><label class="label" for="tjob">{t.editor.targetJob}</label><input id="tjob" class="input" placeholder={t.editor.targetJobPlaceholder} bind:value={targetJob}></div>
+          <div><label class="label" for="jdesc">{t.editor.jobDesc}</label><textarea id="jdesc" class="input" rows="4" placeholder={t.editor.jobDescPlaceholder} bind:value={jobDescription}></textarea></div>
         </div>
       </div>
       <button class="btn btn-primary" style="width:100%;padding:0.875rem;font-size:1rem" onclick={optimize} disabled={isOptimizing}>

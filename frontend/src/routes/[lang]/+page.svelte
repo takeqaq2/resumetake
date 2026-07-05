@@ -6,7 +6,34 @@
   let lang = $derived($page.params.lang);
   let t = $derived(getTranslation(lang));
   let mounted = $state(false);
-  onMount(() => { mounted = true; });
+  let visible = $state(false);
+  let featureVisible = $state(false);
+  let ctaVisible = $state(false);
+  let scrollProgress = $state(0);
+
+  onMount(() => {
+    mounted = true;
+    setTimeout(() => visible = true, 100);
+
+    const featObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) featureVisible = true; });
+    }, { threshold: 0.15 });
+    const ctaObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) ctaVisible = true; });
+    }, { threshold: 0.3 });
+
+    const featEl = document.getElementById('features');
+    const ctaEl = document.getElementById('cta');
+    if (featEl) featObs.observe(featEl);
+    if (ctaEl) ctaObs.observe(ctaEl);
+
+    const onScroll = () => {
+      const h = document.documentElement.scrollHeight - window.innerHeight;
+      scrollProgress = h > 0 ? (window.scrollY / h) * 100 : 0;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { window.removeEventListener('scroll', onScroll); featObs.disconnect(); ctaObs.disconnect(); };
+  });
 </script>
 
 <svelte:head>
@@ -45,48 +72,89 @@
   })}</script>`}
 </svelte:head>
 
-<section style="position:relative;overflow:hidden">
-  <div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(59,130,246,0.05) 0%,rgba(139,92,246,0.05) 100%)"></div>
-  <div class="container" style="position:relative;text-align:center;padding:6rem 1.5rem 7rem">
-    <div class="hero-badge" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.375rem 1rem;border-radius:9999px;font-size:0.8125rem;font-weight:500;margin-bottom:2rem">
-      <span style="font-size:0.875rem">✨</span> {t.hero.badge}
+<!-- Scroll Progress -->
+<div class="scroll-progress" style="width:{scrollProgress}%"></div>
+
+<!-- Hero Section -->
+<section class="hero-mesh" style="min-height:92vh;display:flex;align-items:center;justify-content:center;position:relative">
+  <!-- Floating Orbs -->
+  <div class="orb orb-blue animate-float" style="width:300px;height:300px;top:10%;left:5%;animation-delay:0s"></div>
+  <div class="orb orb-purple animate-float" style="width:250px;height:250px;top:60%;right:8%;animation-delay:2s"></div>
+  <div class="orb orb-pink animate-float" style="width:200px;height:200px;bottom:15%;left:15%;animation-delay:4s"></div>
+  <div class="orb orb-green animate-float" style="width:180px;height:180px;top:20%;right:25%;animation-delay:1s"></div>
+
+  <div class="container" style="position:relative;text-align:center;padding:6rem 1.5rem 7rem;{visible ? '' : 'opacity:0'}">
+    <div class="{visible ? 'animate-fade-in-down delay-1' : ''}" style="opacity:0">
+      <div class="hero-badge" style="margin-bottom:2rem">
+        <span style="font-size:0.9375rem">✨</span> {t.hero.badge}
+      </div>
     </div>
-    <h1 style="font-size:clamp(2.5rem,5.5vw,4rem);font-weight:800;line-height:1.08;margin-bottom:1.5rem;letter-spacing:-0.02em;color:var(--text)">
+
+    <h1 class="{visible ? 'animate-fade-in-up delay-2' : ''}" style="font-size:clamp(2.5rem,5.5vw,4.2rem);font-weight:800;line-height:1.08;margin-bottom:1.5rem;letter-spacing:-0.03em;color:var(--text);opacity:0">
       {t.hero.title1}<br>
-      <span class="gradient-text" style="background:linear-gradient(135deg,var(--primary),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">{t.hero.title2}</span>
+      <span class="gradient-text">{t.hero.title2}</span>
     </h1>
-    <p style="font-size:1.125rem;color:var(--text-secondary);max-width:36rem;margin:0 auto 2.5rem;line-height:1.7">
+
+    <p class="{visible ? 'animate-fade-in-up delay-3' : ''}" style="font-size:1.125rem;color:var(--text-secondary);max-width:38rem;margin:0 auto 2.5rem;line-height:1.7;opacity:0">
       {t.hero.subtitle}
     </p>
-    <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap">
-      <a href="/{lang}/editor" class="btn btn-primary" style="padding:0.875rem 2rem;font-size:1rem">{t.hero.cta}</a>
-      <a href="#features" class="btn btn-secondary" style="padding:0.875rem 2rem;font-size:1rem">{t.hero.learnMore}</a>
+
+    <div class="{visible ? 'animate-fade-in-up delay-4' : ''}" style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;opacity:0">
+      <a href="/{lang}/editor" class="btn btn-primary" style="padding:0.875rem 2.25rem;font-size:1rem;font-weight:600">
+        <span>{t.hero.cta}</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="transition:transform 0.3s"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <a href="#features" class="btn btn-secondary" style="padding:0.875rem 2.25rem;font-size:1rem">
+        {t.hero.learnMore}
+      </a>
+    </div>
+
+    <!-- Floating decorative elements -->
+    <div class="{visible ? 'animate-fade-in delay-5' : ''}" style="opacity:0;margin-top:3rem">
+      <div style="display:flex;gap:1.5rem;justify-content:center;flex-wrap:wrap;opacity:0.5">
+        {#each ['ATS', 'AI', 'PDF', 'SEO'] as tag, i}
+          <span style="padding:0.25rem 0.75rem;border-radius:9999px;background:var(--bg-glass);border:1px solid var(--border);font-size:0.75rem;color:var(--text-secondary);backdrop-filter:blur(8px)">{tag}</span>
+        {/each}
+      </div>
     </div>
   </div>
 </section>
 
-<section id="features" style="padding:5rem 0;background:var(--bg-surface)">
+<!-- Features Section -->
+<section id="features" style="padding:6rem 0;position:relative">
   <div class="container">
-    <div style="text-align:center;margin-bottom:3rem">
-      <h2 style="font-size:2rem;font-weight:700;margin-bottom:0.75rem;color:var(--text)">{t.features.title}</h2>
-      <p style="color:var(--text-secondary);max-width:32rem;margin:0 auto">{t.features.subtitle}</p>
+    <div class="reveal {featureVisible ? 'visible' : ''}" style="text-align:center;margin-bottom:4rem">
+      <div class="hero-badge" style="margin-bottom:1rem">
+        <span style="font-size:0.875rem">🚀</span> {t.features.title}
+      </div>
+      <h2 style="font-size:clamp(1.75rem,3.5vw,2.25rem);font-weight:700;margin-bottom:0.75rem;color:var(--text)">
+        {t.features.subtitle}
+      </h2>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem">
-      {#each t.features.items as f}
-        <div class="card" style="text-align:center;padding:2rem;transition:transform 0.2s,box-shadow 0.2s;cursor:default">
-          <div style="font-size:2.5rem;margin-bottom:1rem">{f.icon}</div>
-          <h3 style="font-weight:600;margin-bottom:0.5rem;color:var(--text)">{f.title}</h3>
-          <p style="color:var(--text-secondary);font-size:0.9375rem;line-height:1.6">{f.desc}</p>
+      {#each t.features.items as f, i}
+        <div class="feature-card reveal {featureVisible ? 'visible' : ''}" style="transition-delay:{i * 0.1}s">
+          <div class="feature-icon">{f.icon}</div>
+          <h3 style="font-weight:600;margin-bottom:0.5rem;color:var(--text);font-size:1.0625rem">{f.title}</h3>
+          <p style="color:var(--text-secondary);font-size:0.9375rem;line-height:1.65">{f.desc}</p>
         </div>
       {/each}
     </div>
   </div>
 </section>
 
-<section style="padding:5rem 0">
-  <div class="container" style="text-align:center">
-    <h2 style="font-size:2rem;font-weight:700;margin-bottom:0.75rem;color:var(--text)">{t.cta.title}</h2>
-    <p style="color:var(--text-secondary);margin-bottom:2.5rem">{t.cta.subtitle}</p>
-    <a href="/{lang}/editor" class="btn btn-primary" style="padding:0.875rem 2.5rem;font-size:1rem">{t.cta.button}</a>
+<!-- CTA Section -->
+<section id="cta" style="padding:4rem 0">
+  <div class="container">
+    <div class="cta-section reveal {ctaVisible ? 'visible' : ''}">
+      <div style="position:relative;z-index:1">
+        <h2 style="font-size:clamp(1.5rem,3vw,2rem);font-weight:700;margin-bottom:0.75rem">{t.cta.title}</h2>
+        <p style="opacity:0.9;margin-bottom:2rem;max-width:32rem;margin-left:auto;margin-right:auto">{t.cta.subtitle}</p>
+        <a href="/{lang}/editor" class="btn btn-primary" style="padding:0.875rem 2.5rem;font-size:1rem;font-weight:600">
+          {t.cta.button}
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+    </div>
   </div>
 </section>

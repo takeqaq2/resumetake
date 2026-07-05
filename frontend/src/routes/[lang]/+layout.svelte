@@ -6,6 +6,7 @@
 
   let { children } = $props();
   let showLangMenu = $state(false);
+  let scrolled = $state(false);
   let lang = $derived($page.params.lang);
   let t = $derived(getTranslation(lang));
   let langInfo = $derived(LANGUAGES[lang] || LANGUAGES.en);
@@ -18,6 +19,8 @@
     segments[1] = newLang;
     window.location.href = segments.join('/');
   }
+
+  function onScroll() { scrolled = window.scrollY > 20; }
 </script>
 
 <svelte:head>
@@ -31,32 +34,34 @@
   <link rel="alternate" hreflang="x-default" href="https://resume.takee.top/en{$page.url.pathname.replace(/^\/[^\/]+/, '')}">
 </svelte:head>
 
-<div data-lang={lang} dir={langInfo.dir}>
-  <header style="position:sticky;top:0;z-index:50;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);background:color-mix(in srgb,var(--bg) 85%,transparent);border-bottom:1px solid var(--border);transition:background 0.2s">
+<svelte:window onscroll={onScroll} onclick={(e) => { if (showLangMenu && !e.target.closest('[data-lang-menu]')) showLangMenu = false; }} />
+
+<div data-lang={lang} dir={langInfo.dir} style="min-height:100vh;display:flex;flex-direction:column">
+  <header class="glass-header" style="{scrolled ? 'box-shadow:0 1px 12px rgba(0,0,0,0.06)' : ''}">
     <nav class="container" style="display:flex;align-items:center;justify-content:space-between;height:4rem">
       <a href="/{lang}" style="display:flex;align-items:center;gap:0.625rem;text-decoration:none">
-        <div style="width:2.25rem;height:2.25rem;background:linear-gradient(135deg,var(--primary),var(--accent));border-radius:var(--radius);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(59,130,246,0.3)">
-          <span style="color:white;font-weight:700;font-size:1.125rem">R</span>
+        <div class="logo-icon">
+          <span style="color:white;font-weight:700;font-size:1.125rem;position:relative;z-index:1">R</span>
         </div>
-        <span style="font-weight:600;font-size:1.125rem;color:var(--text)">ResumeTake</span>
+        <span style="font-weight:700;font-size:1.125rem;color:var(--text);letter-spacing:-0.02em">ResumeTake</span>
       </a>
       <nav style="display:flex;align-items:center;gap:0.5rem">
         <a href="/{lang}" class="btn btn-secondary" style="padding:0.5rem 1rem">{t.nav.home}</a>
-        <a href="/{lang}/editor" class="btn btn-primary" style="padding:0.5rem 1rem">{t.nav.start}</a>
-        <div style="position:relative">
-          <button class="btn btn-secondary" style="padding:0.5rem 0.75rem;font-size:0.8125rem" onclick={() => showLangMenu = !showLangMenu}>
-            {langInfo.flag} {langInfo.name}
+        <a href="/{lang}/editor" class="btn btn-primary" style="padding:0.5rem 1.25rem;font-weight:600">
+          <span>{t.nav.start}</span>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <div data-lang-menu style="position:relative">
+          <button class="btn btn-secondary" style="padding:0.5rem 0.75rem;font-size:0.8125rem;display:flex;align-items:center;gap:0.375rem" onclick={() => showLangMenu = !showLangMenu}>
+            <span>{langInfo.flag}</span>
+            <span>{langInfo.name}</span>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="transition:transform 0.2s;{showLangMenu ? 'transform:rotate(180deg)' : ''}"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           {#if showLangMenu}
-            <div style="position:absolute;right:0;top:100%;margin-top:0.25rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:0.375rem;min-width:10rem;box-shadow:0 8px 24px rgba(0,0,0,0.12);z-index:100">
+            <div class="lang-menu">
               {#each Object.entries(LANGUAGES) as [code, info]}
-                <button
-                  style="display:flex;align-items:center;gap:0.5rem;width:100%;padding:0.5rem 0.75rem;border:none;background:none;color:{code===lang?'var(--primary)':'var(--text)'};font-size:0.8125rem;cursor:pointer;border-radius:0.25rem;text-align:left;font-weight:{code===lang?'600':'400'}"
-                  onclick={() => switchLanguage(code)}
-                  onmouseenter={(e) => e.target.style.background='var(--bg-surface)'}
-                  onmouseleave={(e) => e.target.style.background='none'}
-                >
-                  <span>{info.flag}</span>
+                <button class="{code===lang ? 'active' : ''}" onclick={() => switchLanguage(code)}>
+                  <span style="font-size:1rem">{info.flag}</span>
                   <span>{info.name}</span>
                 </button>
               {/each}
@@ -73,15 +78,37 @@
 
   <footer style="background:var(--bg-surface);border-top:1px solid var(--border);padding:2.5rem 0;margin-top:4rem">
     <div class="container" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem">
-      <div>
+      <div style="display:flex;align-items:center;gap:0.625rem">
+        <div class="logo-icon" style="width:1.75rem;height:1.75rem">
+          <span style="color:white;font-weight:700;font-size:0.875rem;position:relative;z-index:1">R</span>
+        </div>
         <span style="color:var(--text-secondary);font-size:0.875rem">&copy; {new Date().getFullYear()} ResumeTake. {t.footer.copyright}</span>
       </div>
       <div style="display:flex;gap:1.5rem;color:var(--text-secondary);font-size:0.875rem">
-        <a href="/{lang}/editor" style="color:var(--text-secondary);transition:color 0.2s">{t.footer.createResume}</a>
-        <a href="/{lang}/templates" style="color:var(--text-secondary);transition:color 0.2s">{t.footer.templates}</a>
+        <a href="/{lang}/editor" style="color:var(--text-secondary);transition:color 0.2s;position:relative" class="footer-link">{t.footer.createResume}</a>
+        <a href="/{lang}/templates" style="color:var(--text-secondary);transition:color 0.2s;position:relative" class="footer-link">{t.footer.templates}</a>
       </div>
     </div>
   </footer>
 </div>
 
-<svelte:window onclick={(e) => { if (showLangMenu && !e.target.closest('[data-lang-menu]')) showLangMenu = false; }} />
+<style>
+  :global(.footer-link::after) {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: -2px;
+    width: 100%;
+    height: 1.5px;
+    background: var(--primary);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.25s ease;
+  }
+  :global(.footer-link:hover::after) {
+    transform: scaleX(1);
+  }
+  :global(.footer-link:hover) {
+    color: var(--primary) !important;
+  }
+</style>

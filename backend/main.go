@@ -1,8 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -25,6 +31,7 @@ type Store struct {
 }
 
 var store = &Store{resumes: make(map[string]map[string]interface{})}
+var startTime time.Time
 
 func (s *Store) Save(id string, data map[string]interface{}) {
 	s.mu.Lock()
@@ -54,6 +61,208 @@ func (s *Store) Count() int64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.count
+}
+
+type GroqRequest struct {
+	Model    string          `json:"model"`
+	Messages []GroqMessage   `json:"messages"`
+	MaxTokens int           `json:"max_tokens,omitempty"`
+	Temperature float64     `json:"temperature,omitempty"`
+}
+
+type GroqMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type GroqResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
+var prompts = map[string]string{
+	"zh": `你是一位专业的简历优化顾问。请根据用户提供的简历信息和目标职位，优化简历内容。
+
+要求：
+1. 用中文输出
+2. 按照STAR法则（情境-任务-行动-结果）优化工作经历描述
+3. 添加量化成果和数据
+4. 提取并匹配ATS关键词
+5. 优化个人简介，突出核心竞争力
+
+请返回JSON格式：
+{
+  "optimized_content": {
+    "summary": "优化后的个人简介",
+    "experience": [{"company": "公司名", "position": "职位", "duration": "时间段", "highlights": ["优化后的成就描述1", "描述2"]}],
+    "skills": ["技能1", "技能2"],
+    "education": [{"school": "学校", "degree": "学位", "major": "专业"}]
+  },
+  "ats_score": 85.0,
+  "keywords": ["关键词1", "关键词2"],
+  "suggestions": ["建议1", "建议2"]
+}`,
+	"en": `You are a professional resume optimization consultant. Optimize the resume based on the user's information and target job.
+
+Requirements:
+1. Output in English
+2. Use STAR method (Situation-Task-Action-Result) for work experience
+3. Add quantified achievements with metrics
+4. Extract and match ATS keywords
+5. Optimize professional summary
+
+Return JSON format:
+{
+  "optimized_content": {
+    "summary": "Optimized professional summary",
+    "experience": [{"company": "Company", "position": "Title", "duration": "Period", "highlights": ["Achievement 1", "Achievement 2"]}],
+    "skills": ["Skill 1", "Skill 2"],
+    "education": [{"school": "University", "degree": "Degree", "major": "Major"}]
+  },
+  "ats_score": 85.0,
+  "keywords": ["keyword1", "keyword2"],
+  "suggestions": ["suggestion1", "suggestion2"]
+}`,
+	"ja": `あなたはプロの履歴書最適化コンサルタントです。ユーザーの履歴書情報と希望職種に基づいて、履歴書を最適化してください。
+
+要件：
+1. 日本語で出力
+2. STAR法（状況-課題-行動-結果）で職務経歴を最適化
+3. 数値成果を追加
+4. ATSキーワードを抽出・マッチング
+5. 自己PRを最適化
+
+JSON形式で返してください：
+{
+  "optimized_content": {
+    "summary": "最適化された自己PR",
+    "experience": [{"company": "会社名", "position": "役職", "duration": "期間", "highlights": ["成果1", "成果2"]}],
+    "skills": ["スキル1", "スキル2"],
+    "education": [{"school": "大学", "degree": "学位", "major": "専攻"}]
+  },
+  "ats_score": 85.0,
+  "keywords": ["キーワード1", "キーワード2"],
+  "suggestions": ["提案1", "提案2"]
+}`,
+	"ko": `당신은 전문 이력서 최적화 컨설턴트입니다. 사용자의 이력서 정보와 희망 직종을 기반으로 이력서를 최적화해주세요.
+
+요구사항:
+1. 한국어로 출력
+2. STAR 방법(상황-과제-행동-결과)으로 업무 경험 최적화
+3. 정량화된 성과 추가
+4. ATS 키워드 추출 및 매칭
+5. 자기소개 최적화
+
+JSON 형식으로 반환:
+{
+  "optimized_content": {
+    "summary": "최적화된 자기소개",
+    "experience": [{"company": "회사명", "position": "직책", "duration": "기간", "highlights": ["성과1", "성과2"]}],
+    "skills": ["기술1", "기술2"],
+    "education": [{"school": "대학", "degree": "학위", "major": "전공"}]
+  },
+  "ats_score": 85.0,
+  "keywords": ["키워드1", "키워드2"],
+  "suggestions": ["제안1", "제안2"]
+}`,
+	"ar": `أنت مستشار متخصص في تحسين السيرة الذاتية. قم بتحسين السيرة الذاتية بناءً على معلومات المستخدم والمنصب المستهدف.
+
+المتطلبات:
+1. باللغة العربية
+2. استخدم طريقة STAR للمهام العملية
+3. أضف إنجازات مقاسة
+4. استخرج كلمات ATS المفتاحية
+5. حسّن الملخص المهني
+
+أرجع بالتنسيق JSON:
+{
+  "optimized_content": {
+    "summary": "ملخص مهني محسّن",
+    "experience": [{"company": "الشركة", "position": "المنصب", "duration": "الفترة", "highlights": ["إنجاز1", "إنجاز2"]}],
+    "skills": ["مهارة1", "مهارة2"],
+    "education": [{"school": "الجامعة", "degree": "الدرجة", "major": "التخصص"}]
+  },
+  "ats_score": 85.0,
+  "keywords": ["كلمة1", "كلمة2"],
+  "suggestions": ["اقتراح1", "اقتراح2"]
+}`,
+}
+
+func getPrompt(lang string) string {
+	if p, ok := prompts[lang]; ok {
+		return p
+	}
+	return prompts["en"]
+}
+
+func callGroqAI(resumeContent, targetJob, jobDescription, lang string) (map[string]interface{}, error) {
+	apiKey := os.Getenv("GROQ_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("GROQ_API_KEY not set")
+	}
+
+	userMsg := fmt.Sprintf("目标职位: %s\n职位描述: %s\n简历内容: %s", targetJob, jobDescription, resumeContent)
+	if lang == "en" {
+		userMsg = fmt.Sprintf("Target Position: %s\nJob Description: %s\nResume Content: %s", targetJob, jobDescription, resumeContent)
+	} else if lang == "ja" {
+		userMsg = fmt.Sprintf("希望職種: %s\n職務記述書: %s\n履歴書内容: %s", targetJob, jobDescription, resumeContent)
+	} else if lang == "ko" {
+		userMsg = fmt.Sprintf("희망 직종: %s\n직무 설명: %s\n이력서 내용: %s", targetJob, jobDescription, resumeContent)
+	} else if lang == "ar" {
+		userMsg = fmt.Sprintf("المنصب المستهدف: %s\nوصف الوظيفة: %s\nمحتوى السيرة الذاتية: %s", targetJob, jobDescription, resumeContent)
+	}
+
+	reqBody := GroqRequest{
+		Model: "llama-3.3-70b-versatile",
+		Messages: []GroqMessage{
+			{Role: "system", Content: getPrompt(lang)},
+			{Role: "user", Content: userMsg},
+		},
+		MaxTokens:   2048,
+		Temperature: 0.7,
+	}
+
+	jsonData, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var groqResp GroqResponse
+	if err := json.Unmarshal(body, &groqResp); err != nil {
+		return nil, err
+	}
+	if groqResp.Error != nil {
+		return nil, fmt.Errorf("groq error: %s", groqResp.Error.Message)
+	}
+	if len(groqResp.Choices) == 0 {
+		return nil, fmt.Errorf("no choices returned")
+	}
+
+	content := groqResp.Choices[0].Message.Content
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse AI response: %v", err)
+	}
+	return result, nil
 }
 
 func main() {
@@ -113,7 +322,8 @@ func main() {
 			"timestamp": time.Now().Format(time.RFC3339),
 			"uptime":    time.Since(startTime).String(),
 			"requests":  store.Count(),
-			"version":   "1.0.0",
+			"version":   "1.1.0",
+			"ai":        "groq-free",
 		})
 	})
 
@@ -122,11 +332,11 @@ func main() {
 	v1.Post("/resumes", func(c *fiber.Ctx) error {
 		var body map[string]interface{}
 		if err := c.BodyParser(&body); err != nil {
-			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "请求体格式错误"})
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
 		}
 		title, _ := body["title"].(string)
 		if title == "" {
-			return c.Status(400).JSON(fiber.Map{"error": "VALIDATION_ERROR", "message": "title字段必填"})
+			return c.Status(400).JSON(fiber.Map{"error": "VALIDATION_ERROR", "message": "title is required"})
 		}
 		id := uuid.New().String()
 		now := time.Now().Format(time.RFC3339)
@@ -142,14 +352,14 @@ func main() {
 		if r, ok := store.Get(c.Params("id")); ok {
 			return c.JSON(fiber.Map{"success": true, "data": r})
 		}
-		return c.Status(404).JSON(fiber.Map{"error": "NOT_FOUND", "message": "简历不存在"})
+		return c.Status(404).JSON(fiber.Map{"error": "NOT_FOUND", "message": "Resume not found"})
 	})
 
 	v1.Delete("/resumes/:id", func(c *fiber.Ctx) error {
 		if store.Delete(c.Params("id")) {
-			return c.JSON(fiber.Map{"success": true, "message": "删除成功"})
+			return c.JSON(fiber.Map{"success": true, "message": "Deleted"})
 		}
-		return c.Status(404).JSON(fiber.Map{"error": "NOT_FOUND", "message": "简历不存在"})
+		return c.Status(404).JSON(fiber.Map{"error": "NOT_FOUND", "message": "Resume not found"})
 	})
 
 	v1.Post("/optimize", func(c *fiber.Ctx) error {
@@ -161,113 +371,26 @@ func main() {
 		if lang == "" {
 			lang = "en"
 		}
-		responses := map[string]fiber.Map{
-			"zh": {
-				"optimized_content": fiber.Map{
-					"summary": "资深专业人士，拥有丰富的行业经验和卓越的业绩记录。擅长团队协作与项目管理，具备出色的沟通能力和问题解决能力。",
-					"experience": []fiber.Map{{"company": "示例科技有限公司", "position": "高级产品经理", "duration": "2020-至今", "highlights": []string{"领导5人团队完成核心产品开发，用户增长率达到150%", "优化产品流程，将交付周期缩短40%", "建立数据分析体系，驱动产品迭代决策"}}},
-					"skills":    []string{"项目管理", "数据分析", "AI工具应用", "团队协作", "产品设计"},
-					"education": []fiber.Map{{"school": "知名大学", "degree": "硕士学位", "major": "计算机科学与技术"}},
-				},
-				"ats_score": 87.3, "keywords": []string{"项目管理", "数据分析", "AI应用", "团队协作", "产品优化", "流程改进"},
-				"suggestions": []string{"建议添加更多量化成果", "突出AI工具使用经验", "个人简介加入核心关键词", "工作经历按STAR法则优化"},
-			},
-			"en": {
-				"optimized_content": fiber.Map{
-					"summary": "Results-driven professional with extensive industry experience and a proven track record of excellence. Skilled in team collaboration, project management, and communication.",
-					"experience": []fiber.Map{{"company": "Tech Corp", "position": "Senior Product Manager", "duration": "2020-Present", "highlights": []string{"Led 5-person team to launch core product, achieving 150% user growth", "Streamlined product workflow, reducing delivery cycle by 40%", "Built data analytics system to drive product iteration decisions"}}},
-					"skills":    []string{"Project Management", "Data Analysis", "AI Tools", "Team Collaboration", "Product Design"},
-					"education": []fiber.Map{{"school": "University of Technology", "degree": "Master's Degree", "major": "Computer Science"}},
-				},
-				"ats_score": 89.1, "keywords": []string{"Project Management", "Data Analysis", "AI Tools", "Team Leadership", "Product Optimization", "Process Improvement"},
-				"suggestions": []string{"Add more quantified achievements", "Highlight AI tools experience", "Include core keywords in summary", "Optimize work experience using STAR method"},
-			},
-			"ja": {
-				"optimized_content": fiber.Map{
-					"summary": "豊富な業界経験と卓越した実績を持つプロフェッショナル。チームコラボレーション、プロジェクト管理、コミュニケーションに優れている。",
-					"experience": []fiber.Map{{"company": "テック株式会社", "position": "シニアプロダクトマネージャー", "duration": "2020年〜現在", "highlights": []string{"5人のチームを率いてコア製品を開発、ユーザー成長率150%を達成", "製品ワークフローを最適化、納品サイクルを40%短縮", "データ分析システムを構築し、製品改善を推進"}}},
-					"skills":    []string{"プロジェクト管理", "データ分析", "AIツール活用", "チームワーク", "プロダクト設計"},
-					"education": []fiber.Map{{"school": "工科大学", "degree": "修士号", "major": "コンピュータサイエンス"}},
-				},
-				"ats_score": 86.5, "keywords": []string{"プロジェクト管理", "データ分析", "AI活用", "チームワーク", "プロダクト最適化", "プロセス改善"},
-				"suggestions": []string{"量化された成果を追加", "AIツールの経験を強調", "概要にコアキーワードを含める", "STAR法で職務経歴を最適化"},
-			},
-			"ko": {
-				"optimized_content": fiber.Map{
-					"summary": "풍부한 산업 경험과 탁월한 실적을 보유한 결과 지향적 전문가. 팀 협업, 프로젝트 관리, 의사소통에 뛰어남.",
-					"experience": []fiber.Map{{"company": "테크 주식회사", "position": "시니어 프로덕트 매니저", "duration": "2020-현재", "highlights": []string{"5명 팀을 이끌고 핵심 제품 출시, 사용자 성장률 150% 달성", "제품 워크플로우 최적화, 납기 주기 40% 단축", "데이터 분석 시스템 구축으로 제품 개선 추진"}}},
-					"skills":    []string{"프로젝트 관리", "데이터 분석", "AI 도구 활용", "팀 협업", "제품 설계"},
-					"education": []fiber.Map{{"school": "공과대학", "degree": "석사 학위", "major": "컴퓨터 과학"}},
-				},
-				"ats_score": 85.7, "keywords": []string{"프로젝트 관리", "데이터 분석", "AI 활용", "팀 리더십", "제품 최적화", "프로세스 개선"},
-				"suggestions": []string{"정량화된 성과 추가", "AI 도구 경험 강조", "요약에 핵심 키워드 포함", "STAR 방법으로 직무 경험 최적화"},
-			},
-			"es": {
-				"optimized_content": fiber.Map{
-					"summary": "Profesional orientado a resultados con amplia experiencia industrial y un historial comprobado de excelencia.",
-					"experience": []fiber.Map{{"company": "Tech Corp", "position": "Gerente de Producto Senior", "duration": "2020-Presente", "highlights": []string{"Lideró equipo de 5 personas para lanzar producto principal, logrando 150% de crecimiento", "Optimizó flujo de trabajo, reduciendo ciclo de entrega en 40%", "Construyó sistema de análisis de datos para impulsar decisiones"}}},
-					"skills":    []string{"Gestión de Proyectos", "Análisis de Datos", "Herramientas IA", "Trabajo en Equipo", "Diseño de Producto"},
-					"education": []fiber.Map{{"school": "Universidad de Tecnología", "degree": "Maestría", "major": "Ciencias de la Computación"}},
-				},
-				"ats_score": 84.2, "keywords": []string{"Gestión de Proyectos", "Análisis de Datos", "IA", "Liderazgo", "Optimización", "Mejora de Procesos"},
-				"suggestions": []string{"Agregar logros cuantificados", "Destacar experiencia con IA", "Incluir palabras clave en resumen", "Optimizar experiencia con método STAR"},
-			},
-			"pt": {
-				"optimized_content": fiber.Map{
-					"summary": "Profissional orientado a resultados com ampla experiência industrial e histórico comprovado de excelência.",
-					"experience": []fiber.Map{{"company": "Tech Corp", "position": "Gerente de Produto Sênior", "duration": "2020-Presente", "highlights": []string{"Liderou equipe de 5 pessoas no lançamento de produto principal, alcançando 150% de crescimento", "Otimizou fluxo de trabalho, reduzindo ciclo de entrega em 40%", "Construiu sistema de análise de dados para impulsionar decisões"}}},
-					"skills":    []string{"Gestão de Projetos", "Análise de Dados", "Ferramentas IA", "Trabalho em Equipe", "Design de Produto"},
-					"education": []fiber.Map{{"school": "Universidade de Tecnologia", "degree": "Mestrado", "major": "Ciência da Computação"}},
-				},
-				"ats_score": 83.8, "keywords": []string{"Gestão de Projetos", "Análise de Dados", "IA", "Liderança", "Otimização", "Melhoria de Processos"},
-				"suggestions": []string{"Adicionar conquistas quantificadas", "Destacar experiência com IA", "Incluir palavras-chave no resumo", "Otimizar experiência com método STAR"},
-			},
-			"fr": {
-				"optimized_content": fiber.Map{
-					"summary": "Professionnel orienté résultats avec une vaste expérience industrielle et un bilan éprouvé d'excellence.",
-					"experience": []fiber.Map{{"company": "Tech Corp", "position": "Chef de Produit Senior", "duration": "2020-Présent", "highlights": []string{"Dirigé une équipe de 5 personnes pour le lancement du produit phare, atteignant 150% de croissance", "Optimisé le flux de travail, réduisant le cycle de livraison de 40%", "Construit un système d'analyse de données pour guider les décisions"}}},
-					"skills":    []string{"Gestion de Projet", "Analyse de Données", "Outils IA", "Travail d'Équipe", "Design de Produit"},
-					"education": []fiber.Map{{"school": "Université de Technologie", "degree": "Master", "major": "Informatique"}},
-				},
-				"ats_score": 85.0, "keywords": []string{"Gestion de Projet", "Analyse de Données", "IA", "Leadership", "Optimisation", "Amélioration"},
-				"suggestions": []string{"Ajouter des réalisations quantifiées", "Mettre en avant l'expérience IA", "Inclure mots-clés dans le résumé", "Optimiser l'expérience avec la méthode STAR"},
-			},
-			"de": {
-				"optimized_content": fiber.Map{
-					"summary": "Ergebnisorientierter Fachmann mit umfangreicher Branchenerfahrung und nachweislicher Erfolgsbilanz.",
-					"experience": []fiber.Map{{"company": "Tech GmbH", "position": "Senior Product Manager", "duration": "2020-heute", "highlights": []string{"Führte 5-köpfiges Team bei Produktlaunch, 150% Nutzerwachstum erreicht", "Optimierte Produktworkflows, Lieferzyklus um 40% verkürzt", "Aufbaute Data Analytics System zur Steuerung von Produktentscheidungen"}}},
-					"skills":    []string{"Projektmanagement", "Datenanalyse", "KI-Tools", "Teamarbeit", "Produktdesign"},
-					"education": []fiber.Map{{"school": "Technische Universität", "degree": "Masterabschluss", "major": "Informatik"}},
-				},
-				"ats_score": 86.1, "keywords": []string{"Projektmanagement", "Datenanalyse", "KI", "Teamführung", "Produktoptimierung", "Prozessverbesserung"},
-				"suggestions": []string{"Quantifizierte Erfolge hinzufügen", "KI-Erfahrung hervorheben", "Kernbegriffe im Profil einbeziehen", "Berufserfahrung mit STAR-Methode optimieren"},
-			},
-			"ar": {
-				"optimized_content": fiber.Map{
-					"summary": "محترف يركز على النتائج مع خبرة صناعية واسعة وسجل حافل بالتميز.",
-					"experience": []fiber.Map{{"company": "شركة تك", "position": "مدير منتج أول", "duration": "2020-حتى الآن", "highlights": []string{"قاد فريق من 5 أشخاص لإطلاق المنتج الأساسي، محققاً نمو 150%", "حسّن سير العمل، قلّل دورة التسليم بنسبة 40%", "بنى نظام تحليل البيانات لتوجيه قرارات المنتج"}}},
-					"skills":    []string{"إدارة المشاريع", "تحليل البيانات", "أدوات الذكاء الاصطناعي", "العمل الجماعي", "تصميم المنتج"},
-					"education": []fiber.Map{{"school": "جامعة التكنولوجيا", "degree": "ماجستير", "major": "علوم الحاسوب"}},
-				},
-				"ats_score": 82.5, "keywords": []string{"إدارة المشاريع", "تحليل البيانات", "الذكاء الاصطناعي", "القيادة", "تحسين المنتج", "تحسين العمليات"},
-				"suggestions": []string{"إضافة إنجازات مقاسة", "تسليط الضوء على خبرة الذكاء الاصطناعي", "تضمين الكلمات المفتاحية في الملخص", "تحسين الخبرة باستخدام طريقة STAR"},
-			},
-			"hi": {
-				"optimized_content": fiber.Map{
-					"summary": "परिणाम-उन्मुख पेशेवर जिसके पास व्यापक उद्योग अनुभव और उत्कृष्टता का सिद्ध ट्रैक रिकॉर्ड है।",
-					"experience": []fiber.Map{{"company": "टेक कॉर्प", "position": "सीनियर प्रोडक्ट मैनेजर", "duration": "2020-वर्तमान", "highlights": []string{"5 सदस्यों की टीम का नेतृत्व कर मुख्य उत्पाद लॉन्च, 150% उपयोगकर्ता वृद्धि हासिल", "उत्पाद वर्कफ़्लो अनुकूलित, डिलीवरी चक्र 40% कम किया", "डेटा एनालिटिक्स सिस्टम बनाया जिससे उत्पाद निर्णयों को गति मिली"}}},
-					"skills":    []string{"प्रोजेक्ट प्रबंधन", "डेटा विश्लेषण", "AI उपकरण", "टीम सहयोग", "उत्पाद डिज़ाइन"},
-					"education": []fiber.Map{{"school": "प्रौद्योगिकी विश्वविद्यालय", "degree": "स्नातकोत्तर", "major": "कंप्यूटर विज्ञान"}},
-				},
-				"ats_score": 83.0, "keywords": []string{"प्रोजेक्ट प्रबंधन", "डेटा विश्लेषण", "AI", "नेतृत्व", "उत्पाद अनुकूलन", "प्रक्रिया सुधार"},
-				"suggestions": []string{"मात्रात्मक उपलब्धियां जोड़ें", "AI अनुभव उजागर करें", "सारांश में मुख्य कीवर्ड शामिल करें", "STAR विधि से कार्य अनुभव अनुकूलित करें"},
-			},
+		targetJob, _ := body["target_job"].(string)
+		jobDesc, _ := body["job_description"].(string)
+		resumeContent, _ := json.Marshal(body["resume_content"])
+		if resumeContent == nil {
+			resumeContent = []byte("{}")
 		}
-		resp, ok := responses[lang]
-		if !ok {
-			resp = responses["en"]
+
+		store.mu.Lock()
+		store.count++
+		store.mu.Unlock()
+
+		result, err := callGroqAI(string(resumeContent), targetJob, jobDesc, lang)
+		if err != nil {
+			return c.JSON(fiber.Map{
+				"success": false,
+				"error":   "AI optimization failed: " + err.Error(),
+			})
 		}
-		return c.JSON(fiber.Map{"success": true, "data": resp})
+
+		return c.JSON(fiber.Map{"success": true, "data": result})
 	})
 
 	v1.Get("/templates", func(c *fiber.Ctx) error {
@@ -297,6 +420,14 @@ func main() {
 				{"id": "executive", "name": "エグゼクティブ", "description": "上級管理職向け"},
 				{"id": "minimal", "name": "ミニマル", "description": "シンプルで汎用性が高い"},
 			},
+			"ko": {
+				{"id": "professional", "name": "프로페셔널", "description": "전통적 및 비즈니스 직무용"},
+				{"id": "modern", "name": "모던", "description": "IT 및 테크 업계용"},
+				{"id": "creative", "name": "크리에이티브", "description": "디자인 및 크리에이티브 직무용"},
+				{"id": "academic", "name": "아카데믹", "description": "교육 및 연구 직무용"},
+				{"id": "executive", "name": "임원급", "description": "고위 경영진용"},
+				{"id": "minimal", "name": "미니멀", "description": "깔끔하고 범용적"},
+			},
 		}
 		data, ok := templateData[lang]
 		if !ok {
@@ -313,8 +444,5 @@ func main() {
 		_ = app.Shutdown()
 	}()
 
-	startTime = time.Now()
 	_ = app.Listen(":" + port)
 }
-
-var startTime time.Time

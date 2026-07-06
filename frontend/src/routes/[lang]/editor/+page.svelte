@@ -18,6 +18,12 @@
   let startTime = $state(0);
   let dragOver = $state(false);
 
+  let showPerspective = $state(false);
+  let perspectiveLoading = $state(false);
+  let perspectiveResult = $state(null);
+  let activePerspective = $state('original');
+  let perspectiveError = $state('');
+
   let modules = $state({
     ats: true, star: true, quant: true, summary: true, format: true
   });
@@ -121,6 +127,33 @@
       error = lang === 'zh' ? '网络错误，请重试' : lang === 'ja' ? 'ネットワークエラー、再試行してください' : lang === 'ko' ? '네트워크 오류, 다시 시도하세요' : 'Network error, please try again';
     } finally {
       isOptimizing = false;
+    }
+  }
+
+  async function analyzePerspective() {
+    if (!resumeText.trim()) {
+      perspectiveError = t.editor.pasteFirst;
+      return;
+    }
+    perspectiveError = '';
+    perspectiveLoading = true;
+    showPerspective = true;
+    try {
+      const res = await fetch('/api/v1/perspective', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resume_text: resumeText, target_job: targetJob, lang })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        perspectiveResult = data.data;
+      } else {
+        perspectiveError = data.error || (lang === 'zh' ? '分析失败，请重试' : 'Analysis failed, please try again');
+      }
+    } catch {
+      perspectiveError = lang === 'zh' ? '网络错误' : 'Network error';
+    } finally {
+      perspectiveLoading = false;
     }
   }
 
@@ -301,6 +334,15 @@
           {#if elapsed > 0}<span style="opacity:0.6;font-size:0.8125rem;margin-left:0.5rem">{t.editor.optimizedTime}: {elapsed}s</span>{/if}
         </div>
       {/if}
+
+      <button class="perspective-btn" onclick={analyzePerspective} disabled={perspectiveLoading || !resumeText.trim()}>
+        {#if perspectiveLoading}
+          <span class="perspective-spinner"></span>
+        {:else}
+          🔍
+        {/if}
+        <span>{t.perspective.title}</span>
+      </button>
     </div>
 
     <!-- Right: Preview / Result -->
@@ -406,6 +448,78 @@
     </div>
   </div>
 </div>
+
+{#if showPerspective}
+  <div class="container" style="padding:2rem 1.5rem">
+    <div class="perspective-section">
+      <h2 style="font-size:1.25rem;font-weight:700;margin-bottom:1.25rem;color:var(--text)">{t.perspective.title}</h2>
+
+      {#if perspectiveError}
+        <div class="error-msg"><span>⚠️</span> {perspectiveError}</div>
+      {/if}
+
+      {#if perspectiveLoading}
+        <div class="perspective-loading">
+          <div class="perspective-loading-spinner"></div>
+          <span>{lang === 'zh' ? '分析中...' : 'Analyzing...'}</span>
+        </div>
+      {:else if perspectiveResult}
+        <div class="perspective-tabs">
+          {#each ['original', 'optimized', 'imagined', 'desired'] as key}
+            <button class="tab-btn {activePerspective === key ? 'active' : ''}" onclick={() => activePerspective = key}>
+              {t.perspective[key]}
+            </button>
+          {/each}
+        </div>
+
+        <div class="perspective-cards">
+          {#each ['original', 'optimized', 'imagined', 'desired'] as key}
+            {#if activePerspective === key && perspectiveResult[key]}
+              {@const p = perspectiveResult[key]}
+              <div class="perspective-card">
+                <div class="perspective-score-badge" style="background:{key === 'original' ? 'rgba(100,116,139,0.1)' : key === 'optimized' ? 'rgba(16,185,129,0.1)' : key === 'imagined' ? 'rgba(139,92,246,0.1)' : 'rgba(37,99,235,0.1)'};color:{key === 'original' ? '#64748b' : key === 'optimized' ? '#059669' : key === 'imagined' ? '#7c3aed' : '#2563eb'}">
+                  {#if p.score !== undefined}
+                    <span style="font-size:1.5rem;font-weight:800">{p.score}</span>
+                    <span style="font-size:0.75rem;opacity:0.7">/100</span>
+                  {/if}
+                </div>
+                {#if p.summary}
+                  <p class="perspective-summary">{p.summary}</p>
+                {/if}
+                {#if p.experience_highlights?.length}
+                  <div class="perspective-section-inner">
+                    <h4>{lang === 'zh' ? '经历亮点' : 'Experience Highlights'}</h4>
+                    <ul>
+                      {#each p.experience_highlights as h}
+                        <li>{h}</li>
+                      {/each}
+                    </ul>
+                  </div>
+                {/if}
+                {#if p.skills?.length}
+                  <div class="perspective-section-inner">
+                    <h4>{lang === 'zh' ? '技能标签' : 'Skills'}</h4>
+                    <div class="perspective-skills">
+                      {#each p.skills as skill}
+                        <span class="keyword-tag">{skill}</span>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+                {#if p.analysis}
+                  <div class="perspective-section-inner">
+                    <h4>{lang === 'zh' ? '分析' : 'Analysis'}</h4>
+                    <p class="perspective-analysis">{p.analysis}</p>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          {/each}
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
 
 <style>
   .anim-hero { animation: heroFadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -538,5 +652,85 @@
     .editor-grid { grid-template-columns: 1fr !important; }
     .editor-right { position: static; }
     .url-fetch-row { flex-direction: column; }
+    .perspective-cards { grid-template-columns: 1fr; }
+  }
+
+  .perspective-btn {
+    width: 100%; padding: 0.875rem; font-size: 0.9375rem; font-weight: 600;
+    background: var(--bg-glass); color: var(--text);
+    border: 2px dashed var(--border); border-radius: var(--radius-lg);
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    transition: all 0.3s;
+  }
+  .perspective-btn:hover:not(:disabled) {
+    border-color: var(--primary); background: rgba(37,99,235,0.04);
+  }
+  .perspective-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .perspective-spinner {
+    width: 16px; height: 16px; border: 2px solid var(--border);
+    border-top-color: var(--primary); border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  .perspective-section {
+    background: var(--bg-glass); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 2rem;
+    backdrop-filter: blur(16px);
+  }
+  .perspective-tabs {
+    display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border); padding-bottom: 0.75rem;
+  }
+  .perspective-cards {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem;
+  }
+  .perspective-card {
+    background: var(--bg-surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 1.5rem;
+    animation: fadeInUp 0.4s ease;
+  }
+  .perspective-score-badge {
+    display: inline-flex; align-items: baseline; gap: 0.25rem;
+    padding: 0.5rem 1rem; border-radius: var(--radius);
+    margin-bottom: 1rem;
+  }
+  .perspective-summary {
+    font-size: 0.9375rem; line-height: 1.6; color: var(--text);
+    margin-bottom: 1rem;
+  }
+  .perspective-section-inner {
+    margin-top: 1rem; padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+  .perspective-section-inner h4 {
+    font-size: 0.8125rem; font-weight: 600; color: var(--primary);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+  }
+  .perspective-section-inner ul {
+    list-style: none; padding: 0;
+  }
+  .perspective-section-inner li {
+    font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;
+    padding: 0.25rem 0; padding-left: 1rem; position: relative;
+  }
+  .perspective-section-inner li::before {
+    content: '→'; position: absolute; left: 0; color: var(--primary);
+  }
+  .perspective-skills { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+  .perspective-analysis {
+    font-size: 0.875rem; color: var(--text-secondary); line-height: 1.6;
+  }
+  .perspective-loading {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 1rem; padding: 3rem 0; color: var(--text-secondary);
+  }
+  .perspective-loading-spinner {
+    width: 32px; height: 32px; border: 3px solid var(--border);
+    border-top-color: var(--primary); border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 </style>

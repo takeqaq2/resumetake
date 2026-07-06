@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -35,6 +38,72 @@ type Store struct {
 }
 
 var store = &Store{resumes: make(map[string]map[string]interface{})}
+
+type User struct {
+	ID           string    `json:"id"`
+	Email        string    `json:"email"`
+	Password     string    `json:"-"`
+	Name         string    `json:"name"`
+	Token        string    `json:"token"`
+	UsageCount   int       `json:"usage_count"`
+	MaxFreeUsage int       `json:"max_free_usage"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+type UserStore struct {
+	mu    sync.RWMutex
+	users map[string]*User // keyed by email
+}
+
+var userStore = &UserStore{users: make(map[string]*User)}
+
+func (us *UserStore) GetByEmail(email string) (*User, bool) {
+	us.mu.RLock()
+	defer us.mu.RUnlock()
+	u, ok := us.users[email]
+	return u, ok
+}
+
+func (us *UserStore) GetByToken(token string) (*User, bool) {
+	us.mu.RLock()
+	defer us.mu.RUnlock()
+	for _, u := range us.users {
+		if u.Token == token {
+			return u, true
+		}
+	}
+	return nil, false
+}
+
+func (us *UserStore) Save(user *User) {
+	us.mu.Lock()
+	defer us.mu.Unlock()
+	us.users[user.Email] = user
+}
+
+func generateToken(email string) string {
+	h := sha256.Sum256([]byte(email + time.Now().String() + uuid.New().String()))
+	return hex.EncodeToString(h[:])
+}
+
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+
+func authMiddleware(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return c.Status(401).JSON(fiber.Map{"error": "UNAUTHORIZED", "message": "Missing authorization header"})
+	}
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == authHeader {
+		return c.Status(401).JSON(fiber.Map{"error": "UNAUTHORIZED", "message": "Invalid authorization format"})
+	}
+	user, ok := userStore.GetByToken(token)
+	if !ok {
+		return c.Status(401).JSON(fiber.Map{"error": "UNAUTHORIZED", "message": "Invalid token"})
+	}
+	c.Locals("user", user)
+	return c.Next()
+}
 var startTime time.Time
 var totalRequests int64
 
@@ -807,13 +876,21 @@ func main() {
 		})
 	})
 
-	v1.Post("/optimize", limiter.New(limiter.Config{
+	v1.Post("/optimize", authMiddleware, limiter.New(limiter.Config{
 		Max:        10,
 		Expiration: time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {
 			return c.IP()
 		},
 	}), func(c *fiber.Ctx) error {
+		user := c.Locals("user").(*User)
+		if user.UsageCount >= user.MaxFreeUsage {
+			return c.Status(403).JSON(fiber.Map{"error": "LIMIT_EXCEEDED", "message": "Free usage limit exceeded. Please upgrade."})
+		}
+		userStore.mu.Lock()
+		user.UsageCount++
+		userStore.mu.Unlock()
+
 		var body map[string]interface{}
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
@@ -1084,6 +1161,306 @@ func main() {
 			data = templateData["en"]
 		}
 		return c.JSON(fiber.Map{"success": true, "data": data})
+	})
+
+	v1.Post("/auth/register", func(c *fiber.Ctx) error {
+		var body struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+			Name     string `json:"name"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
+		}
+		body.Email = strings.TrimSpace(strings.ToLower(body.Email))
+		body.Name = strings.TrimSpace(body.Name)
+		if !emailRegex.MatchString(body.Email) {
+			return c.Status(400).JSON(fiber.Map{"error": "VALIDATION_ERROR", "message": "Invalid email format"})
+		}
+		if len(body.Password) < 6 {
+			return c.Status(400).JSON(fiber.Map{"error": "VALIDATION_ERROR", "message": "Password must be at least 6 characters"})
+		}
+		if body.Name == "" {
+			body.Name = body.Email[:strings.Index(body.Email, "@")]
+		}
+		if _, exists := userStore.GetByEmail(body.Email); exists {
+			return c.Status(409).JSON(fiber.Map{"error": "CONFLICT", "message": "Email already registered"})
+		}
+		hash := sha256.Sum256([]byte(body.Password))
+		token := generateToken(body.Email)
+		user := &User{
+			ID:           uuid.New().String(),
+			Email:        body.Email,
+			Password:     hex.EncodeToString(hash[:]),
+			Name:         body.Name,
+			Token:        token,
+			MaxFreeUsage: 5,
+			CreatedAt:    time.Now(),
+		}
+		userStore.Save(user)
+		return c.Status(201).JSON(fiber.Map{"success": true, "data": user})
+	})
+
+	v1.Post("/auth/login", func(c *fiber.Ctx) error {
+		var body struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
+		}
+		body.Email = strings.TrimSpace(strings.ToLower(body.Email))
+		user, ok := userStore.GetByEmail(body.Email)
+		if !ok {
+			return c.Status(401).JSON(fiber.Map{"error": "INVALID_CREDENTIALS", "message": "Invalid email or password"})
+		}
+		hash := sha256.Sum256([]byte(body.Password))
+		if user.Password != hex.EncodeToString(hash[:]) {
+			return c.Status(401).JSON(fiber.Map{"error": "INVALID_CREDENTIALS", "message": "Invalid email or password"})
+		}
+		userStore.mu.Lock()
+		user.Token = generateToken(body.Email)
+		userStore.mu.Unlock()
+		return c.JSON(fiber.Map{"success": true, "data": user})
+	})
+
+	v1.Get("/auth/me", authMiddleware, func(c *fiber.Ctx) error {
+		user := c.Locals("user").(*User)
+		return c.JSON(fiber.Map{"success": true, "data": user})
+	})
+
+	v1.Get("/jobs", func(c *fiber.Ctx) error {
+		type Job struct {
+			ID          string   `json:"id"`
+			Title       string   `json:"title"`
+			Company     string   `json:"company"`
+			Location    string   `json:"location"`
+			Salary      string   `json:"salary"`
+			Description string   `json:"description"`
+			Tags        []string `json:"tags"`
+			Type        string   `json:"type"`
+			PostedAt    string   `json:"posted_at"`
+		}
+		jobs := []Job{
+			{ID: "j001", Title: "Senior AI Engineer", Company: "ByteDance", Location: "Beijing, China", Salary: "40k-70k", Description: "Build large language model applications and AI-powered products for millions of users.", Tags: []string{"Python", "LLM", "PyTorch", "RAG"}, Type: "full-time", PostedAt: "2026-07-01"},
+			{ID: "j002", Title: "Frontend Engineer", Company: "Alibaba Cloud", Location: "Hangzhou, China", Salary: "30k-55k", Description: "Develop next-generation cloud console and developer tools.", Tags: []string{"React", "TypeScript", "Ant Design", "Node.js"}, Type: "full-time", PostedAt: "2026-06-28"},
+			{ID: "j003", Title: "Backend Developer", Company: "Tencent", Location: "Shenzhen, China", Salary: "35k-60k", Description: "Design and implement high-performance microservices for WeChat ecosystem.", Tags: []string{"Go", "gRPC", "Redis", "MySQL"}, Type: "full-time", PostedAt: "2026-06-25"},
+			{ID: "j004", Title: "Product Manager", Company: "Meituan", Location: "Beijing, China", Salary: "30k-50k", Description: "Lead product strategy for local life services platform.", Tags: []string{"Product Strategy", "Data Analysis", "Agile", "User Research"}, Type: "full-time", PostedAt: "2026-07-02"},
+			{ID: "j005", Title: "UI/UX Designer", Company: "Xiaomi", Location: "Beijing, China", Salary: "25k-45k", Description: "Design intuitive interfaces for MIUI and smart home products.", Tags: []string{"Figma", "Prototyping", "Design System", "Interaction Design"}, Type: "full-time", PostedAt: "2026-06-30"},
+			{ID: "j006", Title: "ML Engineer Intern", Company: "Baidu", Location: "Beijing, China", Salary: "4k-8k", Description: "Work on cutting-edge NLP and computer vision projects.", Tags: []string{"Python", "TensorFlow", "NLP", "Computer Vision"}, Type: "intern", PostedAt: "2026-07-03"},
+			{ID: "j007", Title: "Software Engineer", Company: "Google", Location: "Mountain View, CA", Salary: "$150k-$220k", Description: "Build scalable infrastructure and services for Google Cloud.", Tags: []string{"Java", "C++", "Distributed Systems", "GCP"}, Type: "full-time", PostedAt: "2026-06-20"},
+			{ID: "j008", Title: "Frontend Developer", Company: "Microsoft", Location: "Redmond, WA", Salary: "$130k-$190k", Description: "Develop Azure portal features and React component libraries.", Tags: []string{"React", "TypeScript", "Azure", "WCAG"}, Type: "full-time", PostedAt: "2026-06-22"},
+			{ID: "j009", Title: "Full Stack Engineer", Company: "Shopify", Location: "Remote (Global)", Salary: "$120k-$175k", Description: "Build merchant-facing tools and Ruby on Rails applications.", Tags: []string{"Ruby on Rails", "React", "GraphQL", "PostgreSQL"}, Type: "full-time", PostedAt: "2026-07-01"},
+			{ID: "j010", Title: "Data Scientist Intern", Company: "Netflix", Location: "Los Gatos, CA", Salary: "$6k-$10k/mo", Description: "Analyze user engagement data and build recommendation models.", Tags: []string{"Python", "SQL", "Spark", "A/B Testing"}, Type: "intern", PostedAt: "2026-06-27"},
+			{ID: "j011", Title: "DevOps Engineer", Company: "Huawei", Location: "Shenzhen, China", Salary: "30k-50k", Description: "Maintain CI/CD pipelines and cloud-native infrastructure.", Tags: []string{"Kubernetes", "Docker", "Jenkins", "Linux"}, Type: "full-time", PostedAt: "2026-06-29"},
+			{ID: "j012", Title: "iOS Developer", Company: "ByteDance", Location: "Shanghai, China", Salary: "30k-55k", Description: "Build TikTok iOS features used by billions worldwide.", Tags: []string{"Swift", "Objective-C", "UIKit", "Core Animation"}, Type: "full-time", PostedAt: "2026-07-02"},
+			{ID: "j013", Title: "AI Research Intern", Company: "OpenAI", Location: "San Francisco, CA", Salary: "$8k-$12k/mo", Description: "Contribute to frontier AI safety and alignment research.", Tags: []string{"Python", "PyTorch", "RLHF", "Research"}, Type: "intern", PostedAt: "2026-06-26"},
+			{ID: "j014", Title: "Backend Engineer", Company: "Stripe", Location: "Remote (US)", Salary: "$140k-$200k", Description: "Build reliable payment infrastructure and APIs.", Tags: []string{"Ruby", "Go", "Distributed Systems", "API Design"}, Type: "full-time", PostedAt: "2026-07-03"},
+			{ID: "j015", Title: "Product Designer", Company: "Alibaba", Location: "Hangzhou, China", Salary: "25k-45k", Description: "Design end-to-end experiences for Taobao merchants.", Tags: []string{"Figma", "User Research", "Service Design", "Data Visualization"}, Type: "full-time", PostedAt: "2026-06-30"},
+			{ID: "j016", Title: "QA Automation Engineer", Company: "JD.com", Location: "Beijing, China", Salary: "20k-35k", Description: "Build automated testing frameworks for e-commerce platform.", Tags: []string{"Selenium", "Jenkins", "Python", "API Testing"}, Type: "full-time", PostedAt: "2026-06-28"},
+			{ID: "j017", Title: "Cloud Solutions Architect", Company: "AWS", Location: "Seattle, WA", Salary: "$160k-$230k", Description: "Design enterprise cloud architectures and migration strategies.", Tags: []string{"AWS", "Terraform", "Microservices", "Security"}, Type: "full-time", PostedAt: "2026-06-24"},
+			{ID: "j018", Title: "React Native Developer", Company: "Shopee", Location: "Singapore", Salary: "SGD 5k-9k", Description: "Build cross-platform mobile features for Southeast Asian market.", Tags: []string{"React Native", "TypeScript", "Redux", "REST API"}, Type: "full-time", PostedAt: "2026-07-01"},
+			{ID: "j019", Title: "Cybersecurity Analyst Intern", Company: "Kaspersky", Location: "Moscow / Remote", Salary: "$3k-$5k/mo", Description: "Analyze threat intelligence and malware samples.", Tags: []string{"Python", "SIEM", "Threat Analysis", "Reverse Engineering"}, Type: "intern", PostedAt: "2026-06-25"},
+			{ID: "j020", Title: "Blockchain Developer", Company: "Ant Group", Location: "Shanghai, China", Salary: "35k-60k", Description: "Build Web3 and blockchain-based financial products.", Tags: []string{"Solidity", "Go", "Hyperledger", "Smart Contracts"}, Type: "full-time", PostedAt: "2026-07-02"},
+			{ID: "j021", Title: "Embedded Systems Engineer", Company: "NIO", Location: "Shanghai, China", Salary: "25k-45k", Description: "Develop real-time embedded software for autonomous driving systems.", Tags: []string{"C/C++", "RTOS", "Linux Kernel", "CAN Protocol"}, Type: "full-time", PostedAt: "2026-06-27"},
+			{ID: "j022", Title: "Technical Writer", Company: "Atlassian", Location: "Remote (Global)", Salary: "$90k-$130k", Description: "Write developer documentation and API references for Jira and Confluence.", Tags: []string{"Markdown", "OpenAPI", "Git", "Technical Writing"}, Type: "full-time", PostedAt: "2026-06-29"},
+		}
+		return c.JSON(fiber.Map{"success": true, "data": jobs})
+	})
+
+	v1.Get("/jobs/:id", func(c *fiber.Ctx) error {
+		id := c.Params("id")
+		return c.JSON(fiber.Map{"success": true, "data": fiber.Map{
+			"id":          id,
+			"title":       "Senior AI Engineer",
+			"company":     "ByteDance",
+			"location":    "Beijing, China",
+			"salary":      "40k-70k",
+			"description": "Build large language model applications and AI-powered products. You will work closely with research teams to productionize cutting-edge models.",
+			"requirements": []string{
+				"3+ years of ML engineering experience",
+				"Strong Python and PyTorch skills",
+				"Experience with LLM fine-tuning and deployment",
+				"Familiarity with RAG and vector databases",
+			},
+			"tags":      []string{"Python", "LLM", "PyTorch", "RAG"},
+			"type":      "full-time",
+			"posted_at": "2026-07-01",
+		}})
+	})
+
+	v1.Post("/generate-resume", limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+	}), func(c *fiber.Ctx) error {
+		var body struct {
+			Messages []GroqMessage `json:"messages"`
+			Lang     string        `json:"lang"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
+		}
+		if len(body.Messages) == 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "NO_MESSAGES", "message": "Messages array is required"})
+		}
+		if body.Lang == "" {
+			body.Lang = "en"
+		}
+
+		systemPrompt := map[string]string{
+			"zh": `你是一位专业的零基础简历生成助手。你将通过对话的方式，一步一步引导用户构建一份完整的简历。
+
+工作流程：
+1. 首先询问：姓名、目标职位、联系方式（邮箱/电话/城市）
+2. 然后询问：教育背景（学校、专业、学位、时间）
+3. 接着询问：工作经历（公司、职位、时间、主要成就，引导用户用STAR法则描述）
+4. 再询问：项目经验（项目名称、角色、技术栈、成果）
+5. 然后询问：技能清单（技术技能、软技能）
+6. 最后询问：其他信息（证书、语言、兴趣爱好等）
+
+规则：
+- 每次只问一个问题类别，不要一次问太多
+- 用友好、鼓励的语气引导用户
+- 如果用户回答过于简单，主动追问细节
+- 当收集到足够信息后，生成完整的JSON格式简历
+- 最终简历JSON格式：{"resume": {"name": "", "title": "", "contact": {"email": "", "phone": "", "location": ""}, "summary": "", "education": [], "experience": [], "projects": [], "skills": [], "other": ""}}
+
+请用中文与用户交流。`,
+			"en": `You are a professional zero-basis resume generation assistant. You will guide users step by step to build a complete resume through conversation.
+
+Workflow:
+1. First ask: name, target position, contact info (email/phone/city)
+2. Then ask: education background (school, major, degree, dates)
+3. Then ask: work experience (company, role, dates, key achievements using STAR method)
+4. Then ask: project experience (project name, role, tech stack, outcomes)
+5. Then ask: skills list (technical skills, soft skills)
+6. Finally ask: any other info (certifications, languages, hobbies)
+
+Rules:
+- Ask one category at a time, don't overwhelm the user
+- Use a friendly, encouraging tone
+- If user answers are too brief, proactively ask for more details
+- When enough information is collected, generate a complete JSON resume
+- Final resume JSON format: {"resume": {"name": "", "title": "", "contact": {"email": "", "phone": "", "location": ""}, "summary": "", "education": [], "experience": [], "projects": [], "skills": [], "other": ""}}
+
+Communicate with the user in English.`,
+		}
+
+		prompt, ok := systemPrompt[body.Lang]
+		if !ok {
+			prompt = systemPrompt["en"]
+		}
+
+		providers := getAIProviders()
+		if len(providers) == 0 {
+			return c.Status(503).JSON(fiber.Map{"error": "NO_AI", "message": "No AI provider configured"})
+		}
+
+		messages := []GroqMessage{{Role: "system", Content: prompt}}
+		messages = append(messages, body.Messages...)
+
+		var lastErr error
+		for _, p := range providers {
+			reqBody := GroqRequest{
+				Model:       p.Model,
+				Messages:    messages,
+				MaxTokens:   2048,
+				Temperature: 0.7,
+			}
+			jsonData, err := json.Marshal(reqBody)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			apiURL := p.BaseURL + "/chat/completions"
+			req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+p.APIKey)
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				lastErr = fmt.Errorf("%s unavailable", p.Name)
+				continue
+			}
+			defer resp.Body.Close()
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			var groqResp GroqResponse
+			if err := json.Unmarshal(bodyBytes, &groqResp); err != nil {
+				lastErr = err
+				continue
+			}
+			if groqResp.Error != nil {
+				lastErr = fmt.Errorf("%s: %s", p.Name, groqResp.Error.Message)
+				continue
+			}
+			if len(groqResp.Choices) == 0 {
+				lastErr = fmt.Errorf("no response from %s", p.Name)
+				continue
+			}
+			content := groqResp.Choices[0].Message.Content
+			return c.JSON(fiber.Map{"success": true, "data": fiber.Map{
+				"message": content,
+			}})
+		}
+		return c.Status(503).JSON(fiber.Map{"success": false, "error": lastErr.Error()})
+	})
+
+	v1.Get("/pricing", func(c *fiber.Ctx) error {
+		tiers := []fiber.Map{
+			{
+				"id":    "free",
+				"name":  "Free",
+				"price": 0,
+				"features": []string{
+					"5 AI optimizations per month",
+					"Basic resume templates",
+					"1 language support",
+					"Download as text",
+				},
+				"usage_limit": 5,
+			},
+			{
+				"id":    "pro",
+				"name":  "Pro",
+				"price": 9.9,
+				"features": []string{
+					"Unlimited AI optimizations",
+					"All premium templates",
+					"10+ language support",
+					"PDF export",
+					"ATS score analysis",
+					"Perspective analysis",
+					"Priority support",
+				},
+				"usage_limit": -1,
+			},
+			{
+				"id":    "enterprise",
+				"name":  "Enterprise",
+				"price": 49.9,
+				"features": []string{
+					"Everything in Pro",
+					"Team collaboration",
+					"Custom templates",
+					"API access",
+					"Batch resume processing",
+					"Dedicated support",
+					"SLA guarantee",
+				},
+				"usage_limit": -1,
+			},
+		}
+		return c.JSON(fiber.Map{"success": true, "data": tiers})
 	})
 
 	quit := make(chan os.Signal, 1)

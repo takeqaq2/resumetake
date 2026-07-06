@@ -8,6 +8,7 @@
   let { children } = $props();
   let showLangMenu = $state(false);
   let scrolled = $state(false);
+  let isLoggedIn = $state(false);
   let lang = $derived($page.params.lang);
   let t = $derived(getTranslation(lang));
   let langInfo = $derived(LANGUAGES[lang] || LANGUAGES.en);
@@ -25,9 +26,16 @@
   onMount(() => {
     function onScroll() { scrolled = window.scrollY > 20; }
     window.addEventListener('scroll', onScroll, { passive: true });
+    isLoggedIn = !!localStorage.getItem('token');
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
   });
+
+  function logout() {
+    localStorage.removeItem('token');
+    isLoggedIn = false;
+    window.location.href = `/${lang}`;
+  }
 
   function toggleLangMenu(e) {
     e.stopPropagation();

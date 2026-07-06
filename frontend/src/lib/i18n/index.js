@@ -122,6 +122,49 @@ export const translations = {
       createResume: '创建简历',
       templates: '模板'
     },
+    auth: {
+      login: '登录',
+      register: '注册',
+      email: '邮箱',
+      password: '密码',
+      name: '姓名',
+      loginBtn: '登录',
+      registerBtn: '注册',
+      noAccount: '没有账户？',
+      hasAccount: '已有账户？'
+    },
+    jobs: {
+      title: '职位中心',
+      subtitle: '发现最新的工作机会',
+      search: '搜索职位、公司或地点...',
+      apply: '申请',
+      fullTime: '全职',
+      intern: '实习'
+    },
+    generate: {
+      title: '0基础生成简历',
+      subtitle: 'AI引导你一步步构建专业简历',
+      placeholder: '输入你的信息...',
+      send: '发送'
+    },
+    perspective: {
+      title: '4视角分析',
+      original: '原始的我',
+      optimized: '优化后的我',
+      imagined: '我幻想的我',
+      desired: 'HR希望的我'
+    },
+    pricing: {
+      title: '定价方案',
+      subtitle: '选择最适合你的方案',
+      free: '免费版',
+      pro: '专业版',
+      enterprise: '企业版',
+      monthly: '月',
+      current: '当前方案',
+      upgrade: '升级',
+      popular: '最受欢迎'
+    },
     faq: [
       { q: 'ResumeTake是什么？', a: 'ResumeTake是一款AI智能简历优化工具，帮助用户一键生成专业简历，自动匹配ATS关键词，提升求职成功率。' },
       { q: 'ResumeTake是免费的吗？', a: '是的，ResumeTake提供免费的基础AI简历优化功能。' },
@@ -237,6 +280,49 @@ export const translations = {
       copyright: 'All rights reserved.',
       createResume: 'Create Resume',
       templates: 'Templates'
+    },
+    auth: {
+      login: 'Login',
+      register: 'Register',
+      email: 'Email',
+      password: 'Password',
+      name: 'Name',
+      loginBtn: 'Login',
+      registerBtn: 'Register',
+      noAccount: "Don't have an account?",
+      hasAccount: 'Already have an account?'
+    },
+    jobs: {
+      title: 'Job Board',
+      subtitle: 'Discover the latest job opportunities',
+      search: 'Search jobs, companies, or locations...',
+      apply: 'Apply',
+      fullTime: 'Full-time',
+      intern: 'Intern'
+    },
+    generate: {
+      title: '0-Basis Resume Generator',
+      subtitle: 'AI guides you step by step to build a professional resume',
+      placeholder: 'Type your information...',
+      send: 'Send'
+    },
+    perspective: {
+      title: '4-Perspective Analysis',
+      original: 'Original Me',
+      optimized: 'Optimized Me',
+      imagined: 'Imagined Me',
+      desired: 'HR Desired Me'
+    },
+    pricing: {
+      title: 'Pricing',
+      subtitle: 'Choose the plan that fits you best',
+      free: 'Free',
+      pro: 'Pro',
+      enterprise: 'Enterprise',
+      monthly: 'mo',
+      current: 'Current Plan',
+      upgrade: 'Upgrade',
+      popular: 'Most Popular'
     },
     faq: [
       { q: 'What is ResumeTake?', a: 'ResumeTake is an AI-powered resume optimization tool that helps users generate professional resumes, automatically match ATS keywords, and improve job search success rates.' },
@@ -354,6 +440,49 @@ export const translations = {
       createResume: '履歴書作成',
       templates: 'テンプレート'
     },
+    auth: {
+      login: 'ログイン',
+      register: '新規登録',
+      email: 'メールアドレス',
+      password: 'パスワード',
+      name: '氏名',
+      loginBtn: 'ログイン',
+      registerBtn: '新規登録',
+      noAccount: 'アカウントをお持ちでないですか？',
+      hasAccount: 'アカウントをお持ちですか？'
+    },
+    jobs: {
+      title: '求人情報',
+      subtitle: '最新の求人情報を見つけましょう',
+      search: '求人、会社名、場所で検索...',
+      apply: '応募',
+      fullTime: '正社員',
+      intern: 'インターン'
+    },
+    generate: {
+      title: 'ゼロから履歴書作成',
+      subtitle: 'AIがステップバイステップでプロの履歴書作成をガイド',
+      placeholder: '情報を入力してください...',
+      send: '送信'
+    },
+    perspective: {
+      title: '4視点分析',
+      original: '今の私',
+      optimized: '最適化された私',
+      imagined: '理想の私',
+      desired: '企業が求める私'
+    },
+    pricing: {
+      title: '料金プラン',
+      subtitle: 'あなたに最適なプランを選択',
+      free: '無料版',
+      pro: 'プロ版',
+      enterprise: 'エンタープライズ',
+      monthly: '月',
+      current: '現在のプラン',
+      upgrade: 'アップグレード',
+      popular: '一番人気'
+    },
     faq: [
       { q: 'ResumeTakeとは？', a: 'ResumeTakeは、プロフェッショナルな履歴書をワンクリックで作成し、ATSキーワードを自動マッチングして就職成功率を向上させるAI搭載の履歴書最適化ツールです。' },
       { q: 'ResumeTakeは無料ですか？', a: 'はい、ResumeTakeは基本的なAI履歴書最適化機能を無料で提供しています。' },
@@ -469,6 +598,49 @@ export const translations = {
       copyright: 'All rights reserved.',
       createResume: '이력서 만들기',
       templates: '템플릿'
+    },
+    auth: {
+      login: '로그인',
+      register: '회원가입',
+      email: '이메일',
+      password: '비밀번호',
+      name: '이름',
+      loginBtn: '로그인',
+      registerBtn: '회원가입',
+      noAccount: '계정이 없으신가요?',
+      hasAccount: '이미 계정이 있으신가요?'
+    },
+    jobs: {
+      title: '채용 게시판',
+      subtitle: '최신 채용 기회를 찾아보세요',
+      search: '직무, 회사, 지역으로 검색...',
+      apply: '지원',
+      fullTime: '정규직',
+      intern: '인턴'
+    },
+    generate: {
+      title: '0부터 이력서 생성',
+      subtitle: 'AI가 단계별로 전문 이력서 작성을 안내합니다',
+      placeholder: '정보를 입력하세요...',
+      send: '보내기'
+    },
+    perspective: {
+      title: '4관점 분석',
+      original: '원래의 나',
+      optimized: '최적화된 나',
+      imagined: '상상의 나',
+      desired: '기업이 원하는 나'
+    },
+    pricing: {
+      title: '요금제',
+      subtitle: '가장 적합한 플랜을 선택하세요',
+      free: '무료版',
+      pro: '프로版',
+      enterprise: '엔터프라이즈',
+      monthly: '월',
+      current: '현재 플랜',
+      upgrade: '업그레이드',
+      popular: '가장 인기'
     },
     faq: [
       { q: 'ResumeTake란?', a: 'ResumeTake는 AI 기반 이력서 최적화 도구로, 전문 이력서를 원클릭으로 생성하고 ATS 키워드를 자동 매칭하여 취업 성공률을 높여줍니다.' },
@@ -586,6 +758,49 @@ export const translations = {
       createResume: 'Crear CV',
       templates: 'Plantillas'
     },
+    auth: {
+      login: 'Iniciar sesión',
+      register: 'Registrarse',
+      email: 'Correo electrónico',
+      password: 'Contraseña',
+      name: 'Nombre',
+      loginBtn: 'Iniciar sesión',
+      registerBtn: 'Registrarse',
+      noAccount: '¿No tienes cuenta?',
+      hasAccount: '¿Ya tienes cuenta?'
+    },
+    jobs: {
+      title: 'Ofertas de Empleo',
+      subtitle: 'Descubre las últimas oportunidades laborales',
+      search: 'Buscar empleos, empresas o ubicaciones...',
+      apply: 'Aplicar',
+      fullTime: 'Tiempo completo',
+      intern: 'Pasantía'
+    },
+    generate: {
+      title: 'Generador de CV desde Cero',
+      subtitle: 'La IA te guía paso a paso para crear un CV profesional',
+      placeholder: 'Escribe tu información...',
+      send: 'Enviar'
+    },
+    perspective: {
+      title: 'Análisis de 4 Perspectivas',
+      original: 'Yo Original',
+      optimized: 'Yo Optimizado',
+      imagined: 'Yo Imaginado',
+      desired: 'Lo que HR Quiere'
+    },
+    pricing: {
+      title: 'Planes',
+      subtitle: 'Elige el plan que mejor se adapte a ti',
+      free: 'Gratis',
+      pro: 'Pro',
+      enterprise: 'Empresa',
+      monthly: '/mes',
+      current: 'Plan Actual',
+      upgrade: 'Mejorar',
+      popular: 'Más Popular'
+    },
     faq: [
       { q: '¿Qué es ResumeTake?', a: 'ResumeTake es una herramienta de optimización de CV con IA que ayuda a generar CVs profesionales, coincidir automáticamente con palabras clave ATS y mejorar las tasas de éxito en la búsqueda de empleo.' },
       { q: '¿Es ResumeTake gratuito?', a: 'Sí, ResumeTake ofrece funciones básicas gratuitas de optimización de CV con IA.' },
@@ -701,6 +916,49 @@ export const translations = {
       copyright: 'All rights reserved.',
       createResume: 'Criar Currículo',
       templates: 'Modelos'
+    },
+    auth: {
+      login: 'Entrar',
+      register: 'Cadastrar',
+      email: 'E-mail',
+      password: 'Senha',
+      name: 'Nome',
+      loginBtn: 'Entrar',
+      registerBtn: 'Cadastrar',
+      noAccount: 'Não tem conta?',
+      hasAccount: 'Já tem conta?'
+    },
+    jobs: {
+      title: 'Vagas de Emprego',
+      subtitle: 'Descubra as últimas oportunidades',
+      search: 'Buscar vagas, empresas ou localizações...',
+      apply: 'Candidatar',
+      fullTime: 'Integral',
+      intern: 'Estágio'
+    },
+    generate: {
+      title: 'Gerador de Currículo do Zero',
+      subtitle: 'A IA guia você passo a passo para criar um currículo profissional',
+      placeholder: 'Digite suas informações...',
+      send: 'Enviar'
+    },
+    perspective: {
+      title: 'Análise de 4 Perspectivas',
+      original: 'Eu Original',
+      optimized: 'Eu Otimizado',
+      imagined: 'Eu Imaginado',
+      desired: 'O que a RH Quer'
+    },
+    pricing: {
+      title: 'Planos',
+      subtitle: 'Escolha o plano ideal para você',
+      free: 'Grátis',
+      pro: 'Pro',
+      enterprise: 'Empresa',
+      monthly: '/mês',
+      current: 'Plano Atual',
+      upgrade: 'Fazer Upgrade',
+      popular: 'Mais Popular'
     },
     faq: [
       { q: 'O que é o ResumeTake?', a: 'ResumeTake é uma ferramenta de otimização de currículo com IA que ajuda a gerar currículos profissionais, combinar palavras-chave ATS automaticamente e melhorar as taxas de sucesso na busca por emprego.' },
@@ -818,6 +1076,49 @@ export const translations = {
       createResume: 'Créer un CV',
       templates: 'Modèles'
     },
+    auth: {
+      login: 'Connexion',
+      register: 'Inscription',
+      email: 'E-mail',
+      password: 'Mot de passe',
+      name: 'Nom',
+      loginBtn: 'Se connecter',
+      registerBtn: "S'inscrire",
+      noAccount: "Vous n'avez pas de compte ?",
+      hasAccount: 'Vous avez déjà un compte ?'
+    },
+    jobs: {
+      title: "Offres d'Emploi",
+      subtitle: 'Découvrez les dernières opportunités',
+      search: 'Rechercher emplois, entreprises ou lieux...',
+      apply: 'Postuler',
+      fullTime: 'Temps plein',
+      intern: 'Stage'
+    },
+    generate: {
+      title: 'Générateur de CV depuis Zéro',
+      subtitle: "L'IA vous guide étape par étape pour créer un CV professionnel",
+      placeholder: 'Entrez vos informations...',
+      send: 'Envoyer'
+    },
+    perspective: {
+      title: 'Analyse à 4 Perspectives',
+      original: 'Moi Original',
+      optimized: 'Moi Optimisé',
+      imagined: 'Moi Imaginé',
+      desired: 'Ce que HR Veut'
+    },
+    pricing: {
+      title: 'Tarifs',
+      subtitle: 'Choisissez le forfait qui vous convient le mieux',
+      free: 'Gratuit',
+      pro: 'Pro',
+      enterprise: 'Entreprise',
+      monthly: '/mois',
+      current: 'Forfait Actuel',
+      upgrade: 'Passer au Supérieur',
+      popular: 'Le Plus Populaire'
+    },
     faq: [
       { q: 'Qu\'est-ce que ResumeTake ?', a: 'ResumeTake est un outil d\'optimisation de CV propulsé par l\'IA qui aide à générer des CV professionnels, à correspondre automatiquement aux mots-clés ATS et à améliorer les taux de réussite dans la recherche d\'emploi.' },
       { q: 'ResumeTake est-il gratuit ?', a: 'Oui, ResumeTake propose des fonctionnalités gratuites de base d\'optimisation de CV avec l\'IA.' },
@@ -933,6 +1234,49 @@ export const translations = {
       copyright: 'All rights reserved.',
       createResume: 'Lebenslauf erstellen',
       templates: 'Vorlagen'
+    },
+    auth: {
+      login: 'Anmelden',
+      register: 'Registrieren',
+      email: 'E-Mail',
+      password: 'Passwort',
+      name: 'Name',
+      loginBtn: 'Anmelden',
+      registerBtn: 'Registrieren',
+      noAccount: 'Noch kein Konto?',
+      hasAccount: 'Bereits ein Konto?'
+    },
+    jobs: {
+      title: 'Stellenangebote',
+      subtitle: 'Entdecken Sie die neuesten Jobmöglichkeiten',
+      search: 'Jobs, Unternehmen oder Standorte suchen...',
+      apply: 'Bewerben',
+      fullTime: 'Vollzeit',
+      intern: 'Praktikum'
+    },
+    generate: {
+      title: 'Lebenslauf-Generator von Null',
+      subtitle: 'KI begleitet Sie Schritt für Schritt zum professionellen Lebenslauf',
+      placeholder: 'Geben Sie Ihre Informationen ein...',
+      send: 'Senden'
+    },
+    perspective: {
+      title: '4-Perspektiven-Analyse',
+      original: 'Ich (Original)',
+      optimized: 'Ich (Optimiert)',
+      imagined: 'Ich (Vorgestellt)',
+      desired: 'Was HR Will'
+    },
+    pricing: {
+      title: 'Preise',
+      subtitle: 'Wählen Sie den passenden Plan',
+      free: 'Kostenlos',
+      pro: 'Pro',
+      enterprise: 'Unternehmen',
+      monthly: '/Monat',
+      current: 'Aktueller Plan',
+      upgrade: 'Upgrades',
+      popular: 'Beliebteste'
     },
     faq: [
       { q: 'Was ist ResumeTake?', a: 'ResumeTake ist ein KI-gestütztes Lebenslauf-Optimierungstool, das bei der Erstellung professioneller Lebensläufe hilft, ATS-Schlüsselwörter automatisch abzugleichen und die Erfolgsquote bei der Jobsuche zu steigern.' },
@@ -1050,6 +1394,49 @@ export const translations = {
       createResume: 'إنشاء سيرة ذاتية',
       templates: 'القوالب'
     },
+    auth: {
+      login: 'تسجيل الدخول',
+      register: 'إنشاء حساب',
+      email: 'البريد الإلكتروني',
+      password: 'كلمة المرور',
+      name: 'الاسم',
+      loginBtn: 'تسجيل الدخول',
+      registerBtn: 'إنشاء حساب',
+      noAccount: 'ليس لديك حساب؟',
+      hasAccount: 'لديك حساب بالفعل؟'
+    },
+    jobs: {
+      title: 'الوظائف',
+      subtitle: 'اكتشف أحدث فرص العمل',
+      search: 'ابحث عن وظائف أو شركات أو مواقع...',
+      apply: 'تقديم',
+      fullTime: 'دوام كامل',
+      intern: 'تدريب'
+    },
+    generate: {
+      title: 'إنشاء سيرة ذاتية من الصفر',
+      subtitle: 'الذكاء الاصطناعي يرشدك خطوة بخطوة لبناء سيرة ذاتية احترافية',
+      placeholder: 'أدخل معلوماتك...',
+      send: 'إرسال'
+    },
+    perspective: {
+      title: 'تحليل 4 مناظر',
+      original: 'الأنا الأصلية',
+      optimized: 'الأنا المحسّنة',
+      imagined: 'الأنا المتخيّلة',
+      desired: 'ما يريده الموارد البشرية'
+    },
+    pricing: {
+      title: 'الأسعار',
+      subtitle: 'اختر الخطة المناسبة لك',
+      free: 'مجاني',
+      pro: 'احترافي',
+      enterprise: 'مؤسسات',
+      monthly: '/شهر',
+      current: 'الخطة الحالية',
+      upgrade: 'ترقية',
+      popular: 'الأكثر شعبية'
+    },
     faq: [
       { q: 'ما هو ResumeTake؟', a: 'ResumeTake هو أداة تحسين السيرة الذاتية بالذكاء الاصطناعي التي تساعد في إنشاء سير ذاتية احترافية ومطابقة كلمات ATS المفتاحية تلقائياً لزيادة نجاح البحث عن عمل.' },
       { q: 'هل ResumeTake مجاني؟', a: 'نعم، يقدم ResumeTake ميزات مجانية أساسية لتحسين السيرة الذاتية بالذكاء الاصطناعي.' },
@@ -1165,6 +1552,49 @@ export const translations = {
       copyright: 'All rights reserved.',
       createResume: 'रिज़्यूमे बनाएं',
       templates: 'टेम्पलेट्स'
+    },
+    auth: {
+      login: 'लॉग इन',
+      register: 'रजिस्टर',
+      email: 'ईमेल',
+      password: 'पासवर्ड',
+      name: 'नाम',
+      loginBtn: 'लॉग इन',
+      registerBtn: 'रजिस्टर',
+      noAccount: 'खाता नहीं है?',
+      hasAccount: 'पहले से खाता है?'
+    },
+    jobs: {
+      title: 'नौकरी बोर्ड',
+      subtitle: 'नवीनतम नौकरी के अवसर खोजें',
+      search: 'नौकरियां, कंपनियां या स्थान खोजें...',
+      apply: 'आवेदन',
+      fullTime: 'पूर्णकालिक',
+      intern: 'इंटर्नशिप'
+    },
+    generate: {
+      title: 'शून्य से रिज़्यूमे जनरेटर',
+      subtitle: 'AI आपको कदम-दर-कदम पेशेवर रिज़्यूमे बनाने में मार्गदर्शन करता है',
+      placeholder: 'अपनी जानकारी टाइप करें...',
+      send: 'भेजें'
+    },
+    perspective: {
+      title: '4-दृष्टिकोण विश्लेषण',
+      original: 'मूल मैं',
+      optimized: 'अनुकूलित मैं',
+      imagined: 'कल्पना मैं',
+      desired: 'HR क्या चाहता है'
+    },
+    pricing: {
+      title: 'मूल्य निर्धारण',
+      subtitle: 'अपने लिए सही योजना चुनें',
+      free: 'मुफ्त',
+      pro: 'प्रो',
+      enterprise: 'एंटरप्राइज़',
+      monthly: '/माह',
+      current: 'वर्तमान योजना',
+      upgrade: 'अपग्रेड',
+      popular: 'सबसे लोकप्रिय'
     },
     faq: [
       { q: 'ResumeTake क्या है?', a: 'ResumeTake एक AI-संचालित रिज़्यूमे ऑप्टिमाइज़ेशन टूल है जो पेशेवर रिज़्यूमे बनाने, ATS कीवर्ड स्वचालित मैच करने और नौकरी खोज सफलता दर बढ़ाने में मदद करता है।' },

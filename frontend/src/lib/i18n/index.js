@@ -27,9 +27,15 @@ export const translations = {
     nav: {
       home: '首页',
       start: '免费开始',
+      optimize: 'AI优化',
+      generate: '0基础生成',
+      jobs: '校招信息',
+      pricing: '付费方案',
       createResume: '创建简历',
       templates: '模板',
-      language: '语言'
+      language: '语言',
+      login: '登录',
+      logout: '退出'
     },
     hero: {
       badge: 'AI驱动的智能简历优化',
@@ -186,9 +192,15 @@ export const translations = {
     nav: {
       home: 'Home',
       start: 'Get Started',
+      optimize: 'AI Optimize',
+      generate: 'Generate',
+      jobs: 'Jobs',
+      pricing: 'Pricing',
       createResume: 'Create Resume',
       templates: 'Templates',
-      language: 'Language'
+      language: 'Language',
+      login: 'Login',
+      logout: 'Logout'
     },
     hero: {
       badge: 'AI-Powered Smart Resume Optimization',
@@ -345,9 +357,15 @@ export const translations = {
     nav: {
       home: 'ホーム',
       start: '無料で始める',
+      optimize: 'AI最適化',
+      generate: 'ゼロから生成',
+      jobs: '求人情報',
+      pricing: '料金プラン',
       createResume: '履歴書作成',
       templates: 'テンプレート',
-      language: '言語'
+      language: '言語',
+      login: 'ログイン',
+      logout: 'ログアウト'
     },
     hero: {
       badge: 'AI搭載のスマート履歴書最適化',
@@ -504,9 +522,15 @@ export const translations = {
     nav: {
       home: '홈',
       start: '무료로 시작',
+      optimize: 'AI 최적화',
+      generate: '이력서 생성',
+      jobs: '취업 정보',
+      pricing: '요금제',
       createResume: '이력서 만들기',
       templates: '템플릿',
-      language: '언어'
+      language: '언어',
+      login: '로그인',
+      logout: '로그아웃'
     },
     hero: {
       badge: 'AI 기반 스마트 이력서 최적화',
@@ -663,9 +687,15 @@ export const translations = {
     nav: {
       home: 'Inicio',
       start: 'Comenzar',
+      optimize: 'Optimizar IA',
+      generate: 'Generar',
+      jobs: 'Empleos',
+      pricing: 'Precios',
       createResume: 'Crear CV',
       templates: 'Plantillas',
-      language: 'Idioma'
+      language: 'Idioma',
+      login: 'Iniciar sesión',
+      logout: 'Cerrar sesión'
     },
     hero: {
       badge: 'Optimización Inteligente de CV con IA',
@@ -822,9 +852,15 @@ export const translations = {
     nav: {
       home: 'Início',
       start: 'Começar',
+      optimize: 'Otimizar IA',
+      generate: 'Gerar',
+      jobs: 'Vagas',
+      pricing: 'Preços',
       createResume: 'Criar Currículo',
       templates: 'Modelos',
-      language: 'Idioma'
+      language: 'Idioma',
+      login: 'Entrar',
+      logout: 'Sair'
     },
     hero: {
       badge: 'Otimização Inteligente de Currículo com IA',
@@ -981,9 +1017,15 @@ export const translations = {
     nav: {
       home: 'Accueil',
       start: 'Commencer',
+      optimize: 'Optimiser IA',
+      generate: 'Générer',
+      jobs: 'Emplois',
+      pricing: 'Tarifs',
       createResume: 'Créer un CV',
       templates: 'Modèles',
-      language: 'Langue'
+      language: 'Langue',
+      login: 'Connexion',
+      logout: 'Déconnexion'
     },
     hero: {
       badge: 'Optimisation Intelligente de CV avec IA',
@@ -1140,9 +1182,15 @@ export const translations = {
     nav: {
       home: 'Startseite',
       start: 'Jetzt starten',
+      optimize: 'KI-Optimierung',
+      generate: 'Generieren',
+      jobs: 'Stellenangebote',
+      pricing: 'Preise',
       createResume: 'Lebenslauf erstellen',
       templates: 'Vorlagen',
-      language: 'Sprache'
+      language: 'Sprache',
+      login: 'Anmelden',
+      logout: 'Abmelden'
     },
     hero: {
       badge: 'KI-gestützte intelligente Lebenslauf-Optimierung',
@@ -1299,9 +1347,15 @@ export const translations = {
     nav: {
       home: 'الرئيسية',
       start: 'ابدأ مجاناً',
+      optimize: 'تحسين بالذكاء',
+      generate: 'توليد',
+      jobs: 'الوظائف',
+      pricing: 'الأسعار',
       createResume: 'إنشاء سيرة ذاتية',
       templates: 'القوالب',
-      language: 'اللغة'
+      language: 'اللغة',
+      login: 'تسجيل الدخول',
+      logout: 'تسجيل الخروج'
     },
     hero: {
       badge: 'تحسين ذكي للسيرة الذاتية بالذكاء الاصطناعي',
@@ -1458,9 +1512,15 @@ export const translations = {
     nav: {
       home: 'होम',
       start: 'शुरू करें',
+      optimize: 'AI ऑप्टिमाइज़',
+      generate: 'जनरेट करें',
+      jobs: 'नौकरियां',
+      pricing: 'मूल्य निर्धारण',
       createResume: 'रिज़्यूमे बनाएं',
       templates: 'टेम्पलेट्स',
-      language: 'भाषा'
+      language: 'भाषा',
+      login: 'लॉगिन',
+      logout: 'लॉगआउट'
     },
     hero: {
       badge: 'AI-संचालित स्मार्ट रिज़्यूमे ऑप्टिमाइज़ेशन',

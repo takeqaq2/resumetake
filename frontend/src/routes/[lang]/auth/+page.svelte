@@ -14,35 +14,131 @@
   let error = $state('');
   let loading = $state(false);
 
+  let regStep = $state(0);
+  let verifyCode = $state('');
+  let sendingCode = $state(false);
+  let countdown = $state(0);
+  let verifying = $state(false);
+
   onMount(() => {
     const token = localStorage.getItem('token');
     if (token) goto(`/${lang}/editor`);
   });
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function sendCode() {
+    if (!email || countdown > 0) return;
+    sendingCode = true;
     error = '';
-    loading = true;
     try {
-      const endpoint = isLogin ? '/api/v1/auth/login' : '/api/v1/auth/register';
-      const body = isLogin ? { email, password } : { email, password, name };
-      const res = await fetch(endpoint, {
+      const res = await fetch('/api/v1/auth/send-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify({ email })
       });
       const data = await res.json();
-      if (data.success && data.token) {
-        localStorage.setItem('token', data.token);
-        goto(`/${lang}/editor`);
+      if (data.success) {
+        countdown = 60;
+        const timer = setInterval(() => {
+          countdown--;
+          if (countdown <= 0) clearInterval(timer);
+        }, 1000);
       } else {
-        error = data.message || (isLogin ? 'Login failed' : 'Registration failed');
+        error = data.message || 'Failed to send code';
       }
     } catch {
-      error = lang === 'zh' ? '网络错误，请重试' : 'Network error, please try again';
+      error = lang === 'zh' ? '网络错误' : 'Network error';
+    } finally {
+      sendingCode = false;
+    }
+  }
+
+  async function handleVerifyCode() {
+    if (!verifyCode || verifyCode.length !== 6) return;
+    verifying = true;
+    error = '';
+    try {
+      const res = await fetch('/api/v1/auth/verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code: verifyCode })
+      });
+      const data = await res.json();
+      if (data.success) {
+        regStep = 2;
+      } else {
+        error = data.message || 'Invalid code';
+      }
+    } catch {
+      error = lang === 'zh' ? '网络错误' : 'Network error';
+    } finally {
+      verifying = false;
+    }
+  }
+
+  async function handleRegister() {
+    loading = true;
+    error = '';
+    try {
+      const res = await fetch('/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, name })
+      });
+      const data = await res.json();
+      if (data.success && data.data && data.data.token) {
+        localStorage.setItem('token', data.data.token);
+        goto(`/${lang}/editor`);
+      } else {
+        error = data.message || 'Registration failed';
+      }
+    } catch {
+      error = lang === 'zh' ? '网络错误' : 'Network error';
     } finally {
       loading = false;
     }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (isLogin) {
+      error = '';
+      loading = true;
+      try {
+        const res = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (data.success && data.token) {
+          localStorage.setItem('token', data.token);
+          goto(`/${lang}/editor`);
+        } else {
+          error = data.message || 'Login failed';
+        }
+      } catch {
+        error = lang === 'zh' ? '网络错误，请重试' : 'Network error, please try again';
+      } finally {
+        loading = false;
+      }
+    } else {
+      if (regStep === 0) {
+        if (!email) { error = lang === 'zh' ? '请输入邮箱' : 'Please enter email'; return; }
+        await sendCode();
+        regStep = 1;
+      } else if (regStep === 1) {
+        await handleVerifyCode();
+      } else if (regStep === 2) {
+        if (!password || password.length < 6) { error = lang === 'zh' ? '密码至少6位' : 'Password must be at least 6 chars'; return; }
+        await handleRegister();
+      }
+    }
+  }
+
+  function resetReg() {
+    regStep = 0;
+    verifyCode = '';
+    error = '';
   }
 </script>
 
@@ -71,28 +167,59 @@
     {/if}
 
     <form onsubmit={handleSubmit}>
-      {#if !isLogin}
+      {#if isLogin}
         <div class="form-group">
-          <label for="name" class="label">{t.auth.name}</label>
-          <input id="name" class="input" type="text" bind:value={name} required placeholder={lang === 'zh' ? '请输入姓名' : 'Enter your name'}>
+          <label for="email" class="label">{t.auth.email}</label>
+          <input id="email" class="input" type="email" bind:value={email} required placeholder={lang === 'zh' ? '请输入邮箱' : 'Enter your email'}>
         </div>
+        <div class="form-group">
+          <label for="password" class="label">{t.auth.password}</label>
+          <input id="password" class="input" type="password" bind:value={password} required minlength="6" placeholder={lang === 'zh' ? '请输入密码（至少6位）' : 'Enter password (min 6 chars)'}>
+        </div>
+      {:else}
+        {#if regStep === 0}
+          <div class="form-group">
+            <label for="email" class="label">{t.auth.email}</label>
+            <input id="email" class="input" type="email" bind:value={email} required placeholder={lang === 'zh' ? '请输入邮箱' : 'Enter your email'}>
+          </div>
+        {:else if regStep === 1}
+          <div class="form-group">
+            <label class="label">{lang === 'zh' ? '验证码已发送至' : 'Code sent to'} {email}</label>
+            <div style="display:flex;gap:0.5rem">
+              <input class="input" type="text" bind:value={verifyCode} maxlength="6" placeholder="000000" style="flex:1;letter-spacing:4px;text-align:center;font-size:1.25rem">
+              <button type="button" class="btn btn-secondary" onclick={sendCode} disabled={countdown > 0 || sendingCode} style="white-space:nowrap;font-size:0.8125rem">
+                {countdown > 0 ? `${countdown}s` : (lang === 'zh' ? '重新发送' : 'Resend')}
+              </button>
+            </div>
+          </div>
+          <button type="button" class="btn-link" onclick={resetReg} style="font-size:0.8125rem;color:var(--text-secondary);margin-bottom:0.5rem">
+            ← {lang === 'zh' ? '更换邮箱' : 'Change email'}
+          </button>
+        {:else if regStep === 2}
+          <div class="form-group">
+            <label for="name" class="label">{t.auth.name}</label>
+            <input id="name" class="input" type="text" bind:value={name} required placeholder={lang === 'zh' ? '请输入姓名' : 'Enter your name'}>
+          </div>
+          <div class="form-group">
+            <label for="password" class="label">{t.auth.password}</label>
+            <input id="password" class="input" type="password" bind:value={password} required minlength="6" placeholder={lang === 'zh' ? '请输入密码（至少6位）' : 'Enter password (min 6 chars)'}>
+          </div>
+        {/if}
       {/if}
 
-      <div class="form-group">
-        <label for="email" class="label">{t.auth.email}</label>
-        <input id="email" class="input" type="email" bind:value={email} required placeholder={lang === 'zh' ? '请输入邮箱' : 'Enter your email'}>
-      </div>
-
-      <div class="form-group">
-        <label for="password" class="label">{t.auth.password}</label>
-        <input id="password" class="input" type="password" bind:value={password} required minlength="6" placeholder={lang === 'zh' ? '请输入密码（至少6位）' : 'Enter password (min 6 chars)'}>
-      </div>
-
-      <button class="btn btn-primary auth-submit" type="submit" disabled={loading}>
-        {#if loading}
+      <button class="btn btn-primary auth-submit" type="submit" disabled={loading || verifying}>
+        {#if loading || verifying}
           <span class="auth-spinner"></span>
         {:else}
-          {isLogin ? t.auth.loginBtn : t.auth.registerBtn}
+          {#if isLogin}
+            {t.auth.loginBtn}
+          {:else if regStep === 0}
+            {lang === 'zh' ? '发送验证码' : 'Send Code'}
+          {:else if regStep === 1}
+            {lang === 'zh' ? '验证' : 'Verify'}
+          {:else}
+            {t.auth.registerBtn}
+          {/if}
         {/if}
       </button>
     </form>
@@ -103,7 +230,7 @@
       {:else}
         <span>{t.auth.hasAccount}</span>
       {/if}
-      <button onclick={() => { isLogin = !isLogin; error = ''; }}>
+      <button onclick={() => { isLogin = !isLogin; error = ''; regStep = 0; verifyCode = ''; }}>
         {isLogin ? t.auth.registerBtn : t.auth.loginBtn}
       </button>
     </div>

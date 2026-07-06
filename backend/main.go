@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
+	"net/smtp"
 	"os"
 	"os/signal"
 	"regexp"
@@ -103,6 +106,110 @@ func authMiddleware(c *fiber.Ctx) error {
 	}
 	c.Locals("user", user)
 	return c.Next()
+}
+
+type VerificationCode struct {
+	Code      string
+	CreatedAt time.Time
+}
+
+type VerificationStore struct {
+	mu    sync.RWMutex
+	codes map[string]*VerificationCode // keyed by email
+}
+
+var verificationStore = &VerificationStore{codes: make(map[string]*VerificationCode)}
+
+func (vs *VerificationStore) Save(email, code string) {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	vs.codes[email] = &VerificationCode{Code: code, CreatedAt: time.Now()}
+}
+
+func (vs *VerificationStore) Verify(email, code string) bool {
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+	vc, ok := vs.codes[email]
+	if !ok {
+		return false
+	}
+	if time.Since(vc.CreatedAt) > 5*time.Minute {
+		delete(vs.codes, email)
+		return false
+	}
+	if vc.Code != code {
+		return false
+	}
+	delete(vs.codes, email)
+	return true
+}
+
+func generateVerificationCode() string {
+	return fmt.Sprintf("%06d", rand.Intn(1000000))
+}
+
+func sendVerificationEmail(toEmail, code string) error {
+	smtpHost := os.Getenv("SMTP_HOST")
+	smtpPort := os.Getenv("SMTP_PORT")
+	smtpUser := os.Getenv("SMTP_USER")
+	smtpPass := os.Getenv("SMTP_PASS")
+	smtpFrom := os.Getenv("SMTP_FROM")
+
+	if smtpHost == "" || smtpPort == "" || smtpUser == "" || smtpPass == "" {
+		fmt.Printf("[SMTP] SMTP not configured, skipping email to %s, code: %s\n", toEmail, code)
+		return nil
+	}
+	if smtpFrom == "" {
+		smtpFrom = smtpUser
+	}
+
+	subject := "Subject: ResumeTake Verification Code\r\n"
+	contentType := "MIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n"
+	body := fmt.Sprintf(`<html><body><div style="font-family:Arial,sans-serif;max-width:400px;margin:0 auto;padding:20px">
+<h2 style="color:#4F46E5">ResumeTake</h2>
+<p>Your verification code is:</p>
+<div style="font-size:32px;font-weight:bold;color:#4F46E5;letter-spacing:8px;text-align:center;padding:20px;background:#F3F4F6;border-radius:8px">%s</div>
+<p style="color:#6B7280;font-size:14px">This code expires in 5 minutes.</p>
+</div></body></html>`, code)
+
+	msg := []byte(subject + contentType + body)
+
+	addr := smtpHost + ":" + smtpPort
+	auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+
+	tlsconfig := &tls.Config{ServerName: smtpHost}
+	conn, err := tls.Dial("tcp", addr, tlsconfig)
+	if err != nil {
+		return fmt.Errorf("TLS dial: %w", err)
+	}
+	defer conn.Close()
+
+	client, err := smtp.NewClient(conn, smtpHost)
+	if err != nil {
+		return fmt.Errorf("smtp client: %w", err)
+	}
+	defer client.Close()
+
+	if err = client.Auth(auth); err != nil {
+		return fmt.Errorf("smtp auth: %w", err)
+	}
+	if err = client.Mail(smtpFrom); err != nil {
+		return fmt.Errorf("smtp mail: %w", err)
+	}
+	if err = client.Rcpt(toEmail); err != nil {
+		return fmt.Errorf("smtp rcpt: %w", err)
+	}
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("smtp data: %w", err)
+	}
+	if _, err = w.Write(msg); err != nil {
+		return fmt.Errorf("smtp write: %w", err)
+	}
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("smtp close: %w", err)
+	}
+	return client.Quit()
 }
 var startTime time.Time
 var totalRequests int64
@@ -1161,6 +1268,43 @@ func main() {
 			data = templateData["en"]
 		}
 		return c.JSON(fiber.Map{"success": true, "data": data})
+	})
+
+	v1.Post("/auth/send-code", func(c *fiber.Ctx) error {
+		var body struct {
+			Email string `json:"email"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
+		}
+		body.Email = strings.TrimSpace(strings.ToLower(body.Email))
+		if !emailRegex.MatchString(body.Email) {
+			return c.Status(400).JSON(fiber.Map{"error": "VALIDATION_ERROR", "message": "Invalid email format"})
+		}
+		if _, exists := userStore.GetByEmail(body.Email); exists {
+			return c.Status(409).JSON(fiber.Map{"error": "CONFLICT", "message": "Email already registered"})
+		}
+		code := generateVerificationCode()
+		verificationStore.Save(body.Email, code)
+		if err := sendVerificationEmail(body.Email, code); err != nil {
+			fmt.Printf("[SMTP] Failed to send verification email: %v\n", err)
+		}
+		return c.JSON(fiber.Map{"success": true, "message": "Verification code sent"})
+	})
+
+	v1.Post("/auth/verify-code", func(c *fiber.Ctx) error {
+		var body struct {
+			Email string `json:"email"`
+			Code  string `json:"code"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
+		}
+		body.Email = strings.TrimSpace(strings.ToLower(body.Email))
+		if verificationStore.Verify(body.Email, body.Code) {
+			return c.JSON(fiber.Map{"success": true, "message": "Email verified"})
+		}
+		return c.Status(400).JSON(fiber.Map{"error": "INVALID_CODE", "message": "Invalid or expired verification code"})
 	})
 
 	v1.Post("/auth/register", func(c *fiber.Ctx) error {

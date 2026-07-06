@@ -29,6 +29,11 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/api/health"]
       interval: 30s

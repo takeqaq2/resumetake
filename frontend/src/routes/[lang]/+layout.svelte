@@ -1,8 +1,9 @@
 <script>
-  import '../../lib/styles/themes.css';
+  import '$lib/styles/themes.css';
   import { page } from '$app/stores';
   import { getTranslation, LANGUAGES } from '$lib/i18n/index.js';
   import { afterNavigate } from '$app/navigation';
+  import { onMount } from 'svelte';
 
   let { children } = $props();
   let showLangMenu = $state(false);
@@ -14,13 +15,30 @@
   afterNavigate(() => { showLangMenu = false; });
 
   function switchLanguage(newLang) {
+    showLangMenu = false;
     const path = $page.url.pathname;
     const segments = path.split('/');
     segments[1] = newLang;
     window.location.href = segments.join('/');
   }
 
-  function onScroll() { scrolled = window.scrollY > 20; }
+  onMount(() => {
+    function onScroll() { scrolled = window.scrollY > 20; }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  });
+
+  function toggleLangMenu(e) {
+    e.stopPropagation();
+    showLangMenu = !showLangMenu;
+  }
+
+  function onDocClick(e) {
+    if (showLangMenu && !e.target.closest('[data-lang-menu]')) {
+      showLangMenu = false;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -34,9 +52,8 @@
   <link rel="alternate" hreflang="x-default" href="https://resume.takee.top/en{$page.url.pathname.replace(/^\/[^\/]+/, '')}">
 </svelte:head>
 
-<svelte:window onscroll={onScroll} onclick={(e) => { if (showLangMenu && !e.target.closest('[data-lang-menu]')) showLangMenu = false; }} />
-
-<div data-lang={lang} dir={langInfo.dir} style="min-height:100vh;display:flex;flex-direction:column">
+<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+<div data-lang={lang} dir={langInfo.dir} style="min-height:100vh;display:flex;flex-direction:column" onclick={onDocClick}>
   <header class="glass-header" style="{scrolled ? 'box-shadow:0 1px 12px rgba(0,0,0,0.06)' : ''}">
     <nav class="container" style="display:flex;align-items:center;justify-content:space-between;height:4rem">
       <a href="/{lang}" style="display:flex;align-items:center;gap:0.625rem;text-decoration:none">
@@ -52,7 +69,7 @@
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </a>
         <div data-lang-menu style="position:relative">
-          <button class="btn btn-secondary" style="padding:0.5rem 0.75rem;font-size:0.8125rem;display:flex;align-items:center;gap:0.375rem" onclick={() => showLangMenu = !showLangMenu} aria-expanded={showLangMenu} aria-haspopup="true" aria-label={t.nav.language}>
+          <button class="btn btn-secondary" style="padding:0.5rem 0.75rem;font-size:0.8125rem;display:flex;align-items:center;gap:0.375rem" onclick={toggleLangMenu} aria-expanded={showLangMenu} aria-haspopup="true" aria-label={t.nav.language}>
             <span>{langInfo.flag}</span>
             <span>{langInfo.name}</span>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="transition:transform 0.2s;{showLangMenu ? 'transform:rotate(180deg)' : ''}" aria-hidden="true"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>

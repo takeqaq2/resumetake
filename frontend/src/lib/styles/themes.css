@@ -1,15 +1,7 @@
 /* ===== ResumeTake Modern UI - Glassmorphism + Animations ===== */
-/* Based on 2026 design trends: mesh gradients, glass effects, micro-animations */
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 /* Performance: GPU-accelerated animations */
-@layer base {
-  *, *::before, *::after { box-sizing: border-box; }
-  .orb, .hero-mesh::before, .hero-mesh::after { will-change: transform; }
-  .feature-card, .card, .btn { will-change: transform, box-shadow; contain: layout style; }
-  .glass-header { contain: layout style paint; }
-}
+*, *::before, *::after { box-sizing: border-box; }
 
 :root {
   --bg: #fafbff;

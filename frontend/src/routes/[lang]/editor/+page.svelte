@@ -9,10 +9,14 @@
   let resumeText = $state('');
   let targetJob = $state('');
   let jobDesc = $state('');
+  let jobUrl = $state('');
   let isOptimizing = $state(false);
+  let isUploading = $state(false);
+  let isFetching = $state(false);
   let result = $state(null);
   let error = $state('');
   let startTime = $state(0);
+  let dragOver = $state(false);
 
   let modules = $state({
     ats: true, star: true, quant: true, summary: true, format: true
@@ -21,11 +25,65 @@
   const allModules = ['ats', 'star', 'quant', 'summary', 'format'];
 
   let allSelected = $derived(allModules.every(m => modules[m]));
-  let noneSelected = $derived(allModules.every(m => !modules[m]));
 
   function toggleAll() {
     const val = !allSelected;
     allModules.forEach(m => modules[m] = val);
+  }
+
+  async function uploadFile(file) {
+    if (!file) return;
+    const allowed = ['.txt', '.pdf', '.doc', '.docx'];
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!allowed.includes(ext)) {
+      error = t.editor.uploadError;
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      error = t.editor.uploadError;
+      return;
+    }
+    error = '';
+    isUploading = true;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/v1/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.success && data.data) {
+        resumeText = data.data.text;
+      } else {
+        error = data.message || t.editor.uploadError;
+      }
+    } catch {
+      error = t.editor.uploadError;
+    } finally {
+      isUploading = false;
+    }
+  }
+
+  async function fetchJobUrl() {
+    if (!jobUrl.trim()) return;
+    error = '';
+    isFetching = true;
+    try {
+      const res = await fetch('/api/v1/scrape-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: jobUrl })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        if (data.data.title && !targetJob) targetJob = data.data.title;
+        if (data.data.text) jobDesc = data.data.text;
+      } else {
+        error = data.message || t.editor.fetchError;
+      }
+    } catch {
+      error = t.editor.fetchError;
+    } finally {
+      isFetching = false;
+    }
   }
 
   async function optimize() {
@@ -35,7 +93,7 @@
     }
     const selected = allModules.filter(m => modules[m]);
     if (selected.length === 0) {
-      error = lang === 'zh' ? '请至少选择一个优化模块' : lang === 'ja' ? '最適化モジュールを少なくとも1つ選択してください' : lang === 'ko' ? '최적화 모듈을 하나 이상 선택하세요' : lang === 'es' ? 'Selecciona al menos un módulo' : lang === 'pt' ? 'Selecione pelo menos um módulo' : lang === 'fr' ? 'Sélectionnez au moins un module' : lang === 'de' ? 'Wählen Sie mindestens ein Modul' : lang === 'ar' ? 'اختر وحدة تحسين واحدة على الأقل' : 'Please select at least one module';
+      error = lang === 'zh' ? '请至少选择一个优化模块' : lang === 'ja' ? '最適化モジュールを1つ以上選択してください' : lang === 'ko' ? '최적화 모듈을 하나 이상 선택하세요' : 'Please select at least one optimization module';
       return;
     }
     error = '';
@@ -57,12 +115,13 @@
       if (data.success && data.data) {
         result = data.data;
       } else {
-        error = data.error || (lang === 'zh' ? '优化失败，请重试' : lang === 'ja' ? '最適化に失敗しました' : lang === 'ko' ? '최적화 실패' : 'Optimization failed');
+        error = data.error || (lang === 'zh' ? '优化失败，请重试' : lang === 'ja' ? '最適化に失敗しました、再試行してください' : lang === 'ko' ? '최적화 실패, 다시 시도하세요' : 'Optimization failed, please try again');
       }
     } catch {
-      error = lang === 'zh' ? '网络错误，请检查连接' : lang === 'ja' ? 'ネットワークエラー' : lang === 'ko' ? '네트워크 오류' : 'Network error';
+      error = lang === 'zh' ? '网络错误，请重试' : lang === 'ja' ? 'ネットワークエラー、再試行してください' : lang === 'ko' ? '네트워크 오류, 다시 시도하세요' : 'Network error, please try again';
+    } finally {
+      isOptimizing = false;
     }
-    finally { isOptimizing = false; }
   }
 
   let elapsed = $state(0);
@@ -70,6 +129,51 @@
     if (isOptimizing && startTime) {
       const iv = setInterval(() => { elapsed = ((Date.now() - startTime) / 1000).toFixed(1); }, 100);
       return () => clearInterval(iv);
+    }
+  });
+
+  onMount(() => {
+    const fileInput = document.getElementById('resume-file-input');
+    const uploadZone = document.getElementById('upload-zone');
+    const fetchBtn = document.getElementById('fetch-job-btn');
+    const optimizeBtn = document.getElementById('optimize-btn');
+    const toggleBtn = document.getElementById('toggle-all-btn');
+    const jobUrlInput = document.getElementById('job-url-input');
+
+    if (uploadZone && fileInput) {
+      uploadZone.addEventListener('click', (e) => {
+        if (e.target === fileInput) return;
+        fileInput.click();
+      });
+      uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); dragOver = true; });
+      uploadZone.addEventListener('dragleave', () => { dragOver = false; });
+      uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragOver = false;
+        if (e.dataTransfer.files.length > 0) uploadFile(e.dataTransfer.files[0]);
+      });
+    }
+
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) uploadFile(e.target.files[0]);
+      });
+    }
+
+    if (fetchBtn) {
+      fetchBtn.addEventListener('click', () => fetchJobUrl());
+    }
+
+    if (optimizeBtn) {
+      optimizeBtn.addEventListener('click', () => optimize());
+    }
+
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => toggleAll());
+    }
+
+    if (jobUrlInput) {
+      jobUrlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchJobUrl(); });
     }
   });
 </script>
@@ -96,9 +200,24 @@
   <div class="editor-grid">
     <!-- Left: Input -->
     <div class="editor-left">
-      <!-- Resume Text -->
+      <!-- Resume Text / Upload -->
       <div class="editor-card anim-hero anim-hero-3">
         <label for="resume-text" class="label" style="font-weight:600;color:var(--text);font-size:0.9375rem;margin-bottom:0.75rem;display:block">📋 {t.editor.pasteResume}</label>
+
+        <div id="upload-zone" class="upload-zone {dragOver ? 'drag-over' : ''}" role="button" tabindex="0">
+          <input id="resume-file-input" type="file" accept=".txt,.pdf,.doc,.docx" style="display:none">
+          {#if isUploading}
+            <div class="upload-spinner"></div>
+            <span class="upload-text">{t.editor.uploading}</span>
+          {:else}
+            <div class="upload-icon">📁</div>
+            <span class="upload-text">{t.editor.dragDrop}</span>
+            <span class="upload-hint">{t.editor.uploadHint}</span>
+          {/if}
+        </div>
+
+        <div class="divider-or"><span>{t.editor.orUploadResume}</span></div>
+
         <textarea
           id="resume-text"
           class="input resume-textarea"
@@ -110,11 +229,31 @@
         <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.5rem;opacity:0.7">💡 {t.editor.pasteResumeHint}</p>
       </div>
 
-      <!-- Target Job -->
+      <!-- Target Job + URL Fetch -->
       <div class="editor-card anim-hero anim-hero-4">
         <label for="target-job" class="label" style="font-weight:600;color:var(--text);font-size:0.9375rem;margin-bottom:0.75rem;display:block">🎯 {t.editor.targetJob}</label>
         <input id="target-job" class="input" placeholder={t.editor.targetJobPlaceholder} bind:value={targetJob}>
-        <div style="margin-top:0.75rem">
+
+        <div class="url-fetch-row" style="margin-top:0.75rem">
+          <input
+            id="job-url-input"
+            class="input url-input"
+            placeholder={t.editor.jobUrlPlaceholder}
+            bind:value={jobUrl}
+          >
+          <button id="fetch-job-btn" class="fetch-btn" disabled={isFetching || !jobUrl.trim()}>
+            {#if isFetching}
+              <span class="fetch-spinner"></span>
+            {:else}
+              🔗
+            {/if}
+            <span>{isFetching ? t.editor.fetching : t.editor.fetchJobUrl}</span>
+          </button>
+        </div>
+
+        <div class="divider-or"><span>{t.editor.orPasteUrl}</span></div>
+
+        <div>
           <label for="job-desc" class="label" style="font-size:0.8125rem">{t.editor.jobDesc}</label>
           <textarea id="job-desc" class="input" rows="3" placeholder={t.editor.jobDescPlaceholder} bind:value={jobDesc} style="resize:vertical;font-size:0.8125rem"></textarea>
         </div>
@@ -124,7 +263,7 @@
       <div class="editor-card anim-hero anim-hero-5">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
           <span id="opt-modules-label" style="font-weight:600;color:var(--text);font-size:0.9375rem">⚙️ {t.editor.optModules}</span>
-          <button class="btn-link" onclick={toggleAll}>{allSelected ? t.editor.deselectAll : t.editor.selectAll}</button>
+          <button id="toggle-all-btn" class="btn-link">{allSelected ? t.editor.deselectAll : t.editor.selectAll}</button>
         </div>
         <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.75rem">{t.editor.optModulesHint}</p>
         <div style="display:flex;flex-direction:column;gap:0.5rem">
@@ -151,7 +290,7 @@
           <span style="opacity:0.6;font-size:0.8125rem">{elapsed}s</span>
         </div>
       {:else}
-        <button class="optimize-btn" onclick={optimize}>
+        <button id="optimize-btn" class="optimize-btn">
           <span style="position:relative;z-index:1;display:flex;align-items:center;gap:0.5rem">{t.editor.optimizeBtn}</span>
         </button>
       {/if}
@@ -288,6 +427,54 @@
   .editor-left { display: flex; flex-direction: column; gap: 1rem; }
   .editor-right { position: sticky; top: 5rem; }
   .resume-textarea { font-family: 'SF Mono', 'Fira Code', monospace; }
+
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: var(--bg-surface);
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--primary);
+    background: rgba(37,99,235,0.04);
+  }
+  .upload-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+  .upload-text { display: block; font-size: 0.875rem; font-weight: 500; color: var(--text); }
+  .upload-hint { display: block; font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; }
+  .upload-spinner {
+    width: 24px; height: 24px; border: 2px solid var(--border);
+    border-top-color: var(--primary); border-radius: 50%;
+    animation: spin 0.6s linear infinite; margin: 0 auto 0.5rem;
+  }
+
+  .divider-or {
+    display: flex; align-items: center; gap: 0.75rem;
+    margin: 0.75rem 0; font-size: 0.75rem; color: var(--text-secondary);
+  }
+  .divider-or::before, .divider-or::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  .url-fetch-row { display: flex; gap: 0.5rem; }
+  .url-input { flex: 1; }
+  .fetch-btn {
+    display: flex; align-items: center; gap: 0.375rem;
+    padding: 0.625rem 0.875rem; border-radius: var(--radius);
+    background: var(--primary); color: white; border: none;
+    font-size: 0.8125rem; font-weight: 500; cursor: pointer;
+    white-space: nowrap; transition: all 0.2s;
+  }
+  .fetch-btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+  .fetch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .fetch-spinner {
+    width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white; border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
   .module-item {
     display: flex; align-items: center; gap: 0.75rem;
     padding: 0.625rem 0.75rem; border-radius: var(--radius);
@@ -350,5 +537,6 @@
   @media (max-width: 768px) {
     .editor-grid { grid-template-columns: 1fr !important; }
     .editor-right { position: static; }
+    .url-fetch-row { flex-direction: column; }
   }
 </style>

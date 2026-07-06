@@ -322,6 +322,87 @@ JSON प्रारूप में वापस करें:
 }`,
 }
 
+var perspectivePrompts = map[string]string{
+	"zh": `你是一位专业的简历分析顾问。请根据用户提供的简历内容，从4个视角进行分析。
+
+4个视角：
+1. "original"（原始的我）：忠实展示简历当前的真实内容和水平，不做美化
+2. "optimized"（优化后的我）：用STAR法则+量化成果+ATS关键词优化，展示最佳版本
+3. "imagined"（我幻想的我）：大胆畅想如果用户有更多经验/技能，简历可以达到的理想状态
+4. "desired"（HR希望的我）：站在HR角度，分析HR最想看到的内容和表达方式
+
+请返回JSON格式：
+{
+  "original": {
+    "summary": "当前简历的个人简介",
+    "experience": [{"company": "公司", "position": "职位", "duration": "时间", "highlights": ["当前描述1", "描述2"]}],
+    "skills": ["当前技能"],
+    "score": 65.0,
+    "analysis": "对当前简历的客观评价"
+  },
+  "optimized": {
+    "summary": "优化后的个人简介",
+    "experience": [{"company": "公司", "position": "职位", "duration": "时间", "highlights": ["优化后描述1", "描述2"]}],
+    "skills": ["优化后技能"],
+    "score": 85.0,
+    "analysis": "优化策略说明"
+  },
+  "imagined": {
+    "summary": "理想状态的个人简介",
+    "experience": [{"company": "公司", "position": "职位", "duration": "时间", "highlights": ["理想描述1", "描述2"]}],
+    "skills": ["理想技能"],
+    "score": 95.0,
+    "analysis": "如何达到理想状态的建议"
+  },
+  "desired": {
+    "summary": "HR期望看到的个人简介",
+    "experience": [{"company": "公司", "position": "职位", "duration": "时间", "highlights": ["HR想看到的描述1", "描述2"]}],
+    "skills": ["HR关注的技能"],
+    "score": 88.0,
+    "analysis": "HR筛选简历的关注点"
+  }
+}`,
+	"en": `You are a professional resume analyst. Analyze the user's resume from 4 perspectives.
+
+4 perspectives:
+1. "original": Faithfully show the current real content and level, no embellishment
+2. "optimized": Use STAR method + quantified achievements + ATS keywords, show the best version
+3. "imagined": Boldly imagine the ideal state if the user had more experience/skills
+4. "desired": From HR's perspective, analyze what HR most wants to see
+
+Return JSON format:
+{
+  "original": {
+    "summary": "Current resume summary",
+    "experience": [{"company": "Company", "position": "Title", "duration": "Period", "highlights": ["Current desc 1", "desc 2"]}],
+    "skills": ["Current skills"],
+    "score": 65.0,
+    "analysis": "Objective evaluation of current resume"
+  },
+  "optimized": {
+    "summary": "Optimized summary",
+    "experience": [{"company": "Company", "position": "Title", "duration": "Period", "highlights": ["Optimized desc 1", "desc 2"]}],
+    "skills": ["Optimized skills"],
+    "score": 85.0,
+    "analysis": "Optimization strategy explanation"
+  },
+  "imagined": {
+    "summary": "Ideal state summary",
+    "experience": [{"company": "Company", "position": "Title", "duration": "Period", "highlights": ["Ideal desc 1", "desc 2"]}],
+    "skills": ["Ideal skills"],
+    "score": 95.0,
+    "analysis": "How to reach ideal state"
+  },
+  "desired": {
+    "summary": "What HR wants to see",
+    "experience": [{"company": "Company", "position": "Title", "duration": "Period", "highlights": ["HR wants to see 1", "desc 2"]}],
+    "skills": ["HR-focused skills"],
+    "score": 88.0,
+    "analysis": "HR screening focus points"
+  }
+}`,
+}
+
 func getPrompt(lang string) string {
 	if p, ok := prompts[lang]; ok {
 		return p
@@ -329,12 +410,149 @@ func getPrompt(lang string) string {
 	return prompts["en"]
 }
 
-func callGroqAI(resumeContent, targetJob, jobDescription, lang, moduleHints string) (map[string]interface{}, error) {
-	apiKey := os.Getenv("GROQ_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("AI service not configured")
+type AIProvider struct {
+	Name    string
+	BaseURL string
+	Model   string
+	APIKey  string
+}
+
+func getAIProviders() []AIProvider {
+	var providers []AIProvider
+
+	// SiliconFlow (China-accessible, 9B models free forever)
+	if key := os.Getenv("SILICONFLOW_API_KEY"); key != "" {
+		providers = append(providers, AIProvider{
+			Name:    "siliconflow",
+			BaseURL: "https://api.siliconflow.cn/v1",
+			Model:   "Qwen/Qwen2.5-7B-Instruct",
+			APIKey:  key,
+		})
 	}
 
+	// Zhipu GLM (China-accessible, GLM-4-Flash free forever)
+	if key := os.Getenv("ZHIPU_API_KEY"); key != "" {
+		providers = append(providers, AIProvider{
+			Name:    "zhipu",
+			BaseURL: "https://open.bigmodel.cn/api/paas/v4",
+			Model:   "glm-4-flash",
+			APIKey:  key,
+		})
+	}
+
+	// DeepSeek
+	if key := os.Getenv("DEEPSEEK_API_KEY"); key != "" {
+		providers = append(providers, AIProvider{
+			Name:    "deepseek",
+			BaseURL: "https://api.deepseek.com",
+			Model:   "deepseek-chat",
+			APIKey:  key,
+		})
+	}
+
+	// Doubao (Volcengine)
+	if key := os.Getenv("DOUBAO_API_KEY"); key != "" {
+		providers = append(providers, AIProvider{
+			Name:    "doubao",
+			BaseURL: "https://ark.cn-beijing.volces.com/api/v3",
+			Model:   "doubao-1.5-pro-32k",
+			APIKey:  key,
+		})
+	}
+
+	// Groq
+	if key := os.Getenv("GROQ_API_KEY"); key != "" {
+		providers = append(providers, AIProvider{
+			Name:    "groq",
+			BaseURL: "https://api.groq.com/openai/v1",
+			Model:   "llama-3.3-70b-versatile",
+			APIKey:  key,
+		})
+	}
+
+	// Google Gemini (OpenAI-compatible endpoint, blocked in China)
+	if key := os.Getenv("GEMINI_API_KEY"); key != "" {
+		providers = append(providers, AIProvider{
+			Name:    "gemini",
+			BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+			Model:   "gemini-2.0-flash",
+			APIKey:  key,
+		})
+	}
+
+	// Cerebras
+	if key := os.Getenv("CEREBRAS_API_KEY"); key != "" {
+		providers = append(providers, AIProvider{
+			Name:    "cerebras",
+			BaseURL: "https://api.cerebras.ai/v1",
+			Model:   "llama-3.3-70b",
+			APIKey:  key,
+		})
+	}
+
+	return providers
+}
+
+func callAIWithProvider(provider AIProvider, userMsg, lang string) (map[string]interface{}, error) {
+	reqBody := GroqRequest{
+		Model: provider.Model,
+		Messages: []GroqMessage{
+			{Role: "system", Content: getPrompt(lang)},
+			{Role: "user", Content: userMsg},
+		},
+		MaxTokens:   2048,
+		Temperature: 0.7,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("request preparation failed")
+	}
+
+	apiURL := provider.BaseURL + "/chat/completions"
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("request creation failed")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+provider.APIKey)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s service unavailable", provider.Name)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s response", provider.Name)
+	}
+
+	var groqResp GroqResponse
+	if err := json.Unmarshal(body, &groqResp); err != nil {
+		return nil, fmt.Errorf("invalid %s response format", provider.Name)
+	}
+	if groqResp.Error != nil {
+		return nil, fmt.Errorf("%s error: %s", provider.Name, groqResp.Error.Message)
+	}
+	if len(groqResp.Choices) == 0 {
+		return nil, fmt.Errorf("no response from %s", provider.Name)
+	}
+
+	content := groqResp.Choices[0].Message.Content
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse %s result", provider.Name)
+	}
+	return result, nil
+}
+
+func callAI(resumeContent, targetJob, jobDescription, lang, moduleHints string) (map[string]interface{}, error) {
 	userMsg := fmt.Sprintf("Target Position: %s\nJob Description: %s\nResume Content: %s", targetJob, jobDescription, resumeContent)
 	if lang == "zh" {
 		userMsg = fmt.Sprintf("目标职位: %s\n职位描述: %s\n简历内容: %s", targetJob, jobDescription, resumeContent)
@@ -356,61 +574,25 @@ func callGroqAI(resumeContent, targetJob, jobDescription, lang, moduleHints stri
 		userMsg = fmt.Sprintf("लक्षित पद: %s\nनौकरी विवरण: %s\nरिज़्यूमे सामग्री: %s", targetJob, jobDescription, resumeContent)
 	}
 
-	reqBody := GroqRequest{
-		Model: "llama-3.3-70b-versatile",
-		Messages: []GroqMessage{
-			{Role: "system", Content: getPrompt(lang)},
-			{Role: "user", Content: userMsg + "\n\nOptimization focus:\n" + moduleHints},
-		},
-		MaxTokens:   2048,
-		Temperature: 0.7,
+	if moduleHints != "" {
+		userMsg += "\n\nOptimization focus:\n" + moduleHints
 	}
 
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("request preparation failed")
+	providers := getAIProviders()
+	if len(providers) == 0 {
+		return nil, fmt.Errorf("no AI provider configured")
 	}
 
-	req, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, fmt.Errorf("request creation failed")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("AI service unavailable")
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read AI response")
+	var lastErr error
+	for _, p := range providers {
+		result, err := callAIWithProvider(p, userMsg, lang)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
 	}
 
-	var groqResp GroqResponse
-	if err := json.Unmarshal(body, &groqResp); err != nil {
-		return nil, fmt.Errorf("invalid AI response format")
-	}
-	if groqResp.Error != nil {
-		return nil, fmt.Errorf("AI service error")
-	}
-	if len(groqResp.Choices) == 0 {
-		return nil, fmt.Errorf("no AI response generated")
-	}
-
-	content := groqResp.Choices[0].Message.Content
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
-
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		return nil, fmt.Errorf("failed to parse AI result")
-	}
-	return result, nil
+	return nil, fmt.Errorf("all AI providers failed: %s", lastErr.Error())
 }
 
 func main() {
@@ -421,7 +603,7 @@ func main() {
 	startTime = time.Now()
 
 	app := fiber.New(fiber.Config{
-		AppName:       "ResumeTake API v1.2",
+		AppName:       "ResumeTake API v2.0",
 		BodyLimit:     10 * 1024 * 1024,
 		ServerHeader:  "ResumeTake",
 		StrictRouting: true,
@@ -469,14 +651,19 @@ func main() {
 	})
 
 	app.Get("/api/health", func(c *fiber.Ctx) error {
+		providers := getAIProviders()
+		providerNames := make([]string, len(providers))
+		for i, p := range providers {
+			providerNames[i] = p.Name
+		}
 		return c.JSON(fiber.Map{
 			"status":    "healthy",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"uptime":    time.Since(startTime).String(),
 			"requests":  store.Count(),
 			"total":     atomic.LoadInt64(&totalRequests),
-			"version":   "1.2.0",
-			"ai":        "groq-free",
+			"version":   "2.0.0",
+			"ai":        providerNames,
 			"memory":    fmt.Sprintf("%d MB", getMemUsage()),
 		})
 	})
@@ -517,6 +704,107 @@ func main() {
 			return c.JSON(fiber.Map{"success": true, "message": "Deleted"})
 		}
 		return c.Status(404).JSON(fiber.Map{"error": "NOT_FOUND", "message": "Resume not found"})
+	})
+
+	v1.Post("/upload", func(c *fiber.Ctx) error {
+		file, err := c.FormFile("file")
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "NO_FILE", "message": "No file uploaded"})
+		}
+		if file.Size > 5*1024*1024 {
+			return c.Status(400).JSON(fiber.Map{"error": "FILE_TOO_LARGE", "message": "File too large (max 5MB)"})
+		}
+		ext := strings.ToLower(file.Filename)
+		if !strings.HasSuffix(ext, ".txt") && !strings.HasSuffix(ext, ".pdf") && !strings.HasSuffix(ext, ".doc") && !strings.HasSuffix(ext, ".docx") {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_TYPE", "message": "Only .txt, .pdf, .doc, .docx files supported"})
+		}
+		f, err := file.Open()
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "READ_ERROR", "message": "Failed to read file"})
+		}
+		defer f.Close()
+		content, err := io.ReadAll(f)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "READ_ERROR", "message": "Failed to read file content"})
+		}
+		text := string(content)
+		if len(text) > 15000 {
+			text = text[:15000]
+		}
+		return c.JSON(fiber.Map{
+			"success": true,
+			"data": map[string]interface{}{
+				"filename": file.Filename,
+				"size":     file.Size,
+				"text":     text,
+			},
+		})
+	})
+
+	v1.Post("/scrape-job", limiter.New(limiter.Config{
+		Max:        20,
+		Expiration: time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+	}), func(c *fiber.Ctx) error {
+		var body map[string]interface{}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
+		}
+		jobURL, _ := body["url"].(string)
+		if jobURL == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "NO_URL", "message": "URL is required"})
+		}
+		if !strings.HasPrefix(jobURL, "http://") && !strings.HasPrefix(jobURL, "https://") {
+			jobURL = "https://" + jobURL
+		}
+
+		req, err := http.NewRequest("GET", jobURL, nil)
+		if err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_URL", "message": "Invalid URL"})
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return c.Status(502).JSON(fiber.Map{"error": "FETCH_FAILED", "message": "Failed to fetch job page"})
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 400 {
+			return c.Status(502).JSON(fiber.Map{"error": "FETCH_FAILED", "message": fmt.Sprintf("HTTP %d", resp.StatusCode)})
+		}
+
+		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 500*1024))
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "READ_ERROR", "message": "Failed to read page"})
+		}
+
+		html := string(bodyBytes)
+		title := extractMeta(html, "og:title")
+		desc := extractMeta(html, "description")
+		if desc == "" {
+			desc = extractMeta(html, "og:description")
+		}
+
+		cleanText := stripHTML(html)
+		if len(cleanText) > 5000 {
+			cleanText = cleanText[:5000]
+		}
+
+		return c.JSON(fiber.Map{
+			"success": true,
+			"data": map[string]interface{}{
+				"url":         jobURL,
+				"title":       title,
+				"description": desc,
+				"text":        cleanText,
+				"status":      resp.StatusCode,
+			},
+		})
 	})
 
 	v1.Post("/optimize", limiter.New(limiter.Config{
@@ -578,7 +866,7 @@ func main() {
 			}
 		}
 
-		result, err := callGroqAI(resumeContent, targetJob, jobDesc, lang, moduleHints)
+		result, err := callAI(resumeContent, targetJob, jobDesc, lang, moduleHints)
 		if err != nil {
 			return c.Status(503).JSON(fiber.Map{
 				"success": false,
@@ -587,6 +875,124 @@ func main() {
 		}
 
 		return c.JSON(fiber.Map{"success": true, "data": result})
+	})
+
+	v1.Post("/perspective", limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+	}), func(c *fiber.Ctx) error {
+		var body map[string]interface{}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
+		}
+		lang, _ := body["lang"].(string)
+		if lang == "" {
+			lang = "en"
+		}
+		validLangs := map[string]bool{"zh": true, "en": true, "ja": true, "ko": true, "ar": true, "es": true, "pt": true, "fr": true, "de": true, "hi": true}
+		if !validLangs[lang] {
+			lang = "en"
+		}
+
+		var resumeContent string
+		if rc, ok := body["resume_text"].(string); ok && rc != "" {
+			resumeContent = rc
+		}
+		if len(resumeContent) > 10000 {
+			resumeContent = resumeContent[:10000]
+		}
+		if resumeContent == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "NO_CONTENT", "message": "Resume content is required"})
+		}
+
+		targetJob, _ := body["target_job"].(string)
+		jobDesc, _ := body["job_description"].(string)
+		if len(targetJob) > 500 {
+			targetJob = targetJob[:500]
+		}
+		if len(jobDesc) > 2000 {
+			jobDesc = jobDesc[:2000]
+		}
+
+		prompt, ok := perspectivePrompts[lang]
+		if !ok {
+			prompt = perspectivePrompts["en"]
+		}
+
+		userMsg := fmt.Sprintf("Target Position: %s\nJob Description: %s\nResume Content: %s", targetJob, jobDesc, resumeContent)
+		if lang == "zh" {
+			userMsg = fmt.Sprintf("目标职位: %s\n职位描述: %s\n简历内容: %s", targetJob, jobDesc, resumeContent)
+		}
+
+		providers := getAIProviders()
+		if len(providers) == 0 {
+			return c.Status(503).JSON(fiber.Map{"error": "NO_AI", "message": "No AI provider configured"})
+		}
+
+		var lastErr error
+		for _, p := range providers {
+			reqBody := GroqRequest{
+				Model: p.Model,
+				Messages: []GroqMessage{
+					{Role: "system", Content: prompt},
+					{Role: "user", Content: userMsg},
+				},
+				MaxTokens:   4096,
+				Temperature: 0.7,
+			}
+			jsonData, err := json.Marshal(reqBody)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			apiURL := p.BaseURL + "/chat/completions"
+			req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+p.APIKey)
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				lastErr = fmt.Errorf("%s unavailable", p.Name)
+				continue
+			}
+			defer resp.Body.Close()
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			var groqResp GroqResponse
+			if err := json.Unmarshal(bodyBytes, &groqResp); err != nil {
+				lastErr = err
+				continue
+			}
+			if groqResp.Error != nil {
+				lastErr = fmt.Errorf("%s: %s", p.Name, groqResp.Error.Message)
+				continue
+			}
+			if len(groqResp.Choices) == 0 {
+				lastErr = fmt.Errorf("no response from %s", p.Name)
+				continue
+			}
+			content := groqResp.Choices[0].Message.Content
+			content = strings.TrimPrefix(content, "```json")
+			content = strings.TrimPrefix(content, "```")
+			content = strings.TrimSuffix(content, "```")
+			content = strings.TrimSpace(content)
+			var result map[string]interface{}
+			if err := json.Unmarshal([]byte(content), &result); err != nil {
+				lastErr = fmt.Errorf("failed to parse %s result", p.Name)
+				continue
+			}
+			return c.JSON(fiber.Map{"success": true, "data": result})
+		}
+		return c.Status(503).JSON(fiber.Map{"success": false, "error": lastErr.Error()})
 	})
 
 	v1.Get("/templates", func(c *fiber.Ctx) error {
@@ -695,4 +1101,46 @@ func getMemUsage() uint64 {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	return m.Alloc / 1024 / 1024
+}
+
+func extractMeta(html, name string) string {
+	idx := strings.Index(html, name)
+	if idx == -1 {
+		return ""
+	}
+	rest := html[idx:]
+	if eq := strings.Index(rest, "content=\""); eq != -1 {
+		rest = rest[eq+9:]
+		if end := strings.Index(rest, "\""); end != -1 {
+			return rest[:end]
+		}
+	}
+	return ""
+}
+
+func stripHTML(html string) string {
+	var result strings.Builder
+	inTag := false
+	for _, r := range html {
+		if r == '<' {
+			inTag = true
+			continue
+		}
+		if r == '>' {
+			inTag = false
+			result.WriteString(" ")
+			continue
+		}
+		if !inTag {
+			result.WriteRune(r)
+		}
+	}
+	text := result.String()
+	text = strings.ReplaceAll(text, "\t", " ")
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\n", " ")
+	for strings.Contains(text, "  ") {
+		text = strings.ReplaceAll(text, "  ", " ")
+	}
+	return strings.TrimSpace(text)
 }

@@ -1271,12 +1271,15 @@ func main() {
 	})
 
 	v1.Post("/auth/send-code", func(c *fiber.Ctx) error {
+		fmt.Printf("[DEBUG] send-code: Content-Type: %s, Body: %s\n", c.Get("Content-Type"), string(c.Body()))
 		var body struct {
 			Email string `json:"email"`
 		}
 		if err := c.BodyParser(&body); err != nil {
+			fmt.Printf("[DEBUG] BodyParser error: %v\n", err)
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
 		}
+		fmt.Printf("[DEBUG] Parsed email: %s\n", body.Email)
 		body.Email = strings.TrimSpace(strings.ToLower(body.Email))
 		if !emailRegex.MatchString(body.Email) {
 			return c.Status(400).JSON(fiber.Map{"error": "VALIDATION_ERROR", "message": "Invalid email format"})

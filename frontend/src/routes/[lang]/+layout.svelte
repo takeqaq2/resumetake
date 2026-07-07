@@ -61,7 +61,7 @@
 </svelte:head>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-<div data-lang={lang} dir={langInfo.dir} style="min-height:100vh;display:flex;flex-direction:column" onclick={onDocClick}>
+<div data-lang={lang} dir={langInfo.dir} style="min-height:100vh;display:flex;flex-direction:column" role="presentation" onclick={onDocClick}>
   <header class="glass-header" style="{scrolled ? 'box-shadow:0 1px 12px rgba(0,0,0,0.06)' : ''}">
     <nav class="container" style="display:flex;align-items:center;justify-content:space-between;height:4rem">
       <a href="/{lang}" style="display:flex;align-items:center;gap:0.625rem;text-decoration:none">
@@ -72,10 +72,17 @@
       </a>
       <nav style="display:flex;align-items:center;gap:0.5rem">
         <a href="/{lang}" class="btn btn-secondary" style="padding:0.5rem 1rem">{t.nav.home}</a>
-        <a href="/{lang}/editor" class="btn btn-primary" style="padding:0.5rem 1.25rem;font-weight:600">
-          <span>{t.nav.start}</span>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </a>
+        <a href="/{lang}/editor" class="btn btn-secondary" style="padding:0.5rem 1rem">{t.nav.optimize || 'AI Optimize'}</a>
+        <a href="/{lang}/generate" class="btn btn-secondary" style="padding:0.5rem 1rem">{t.nav.generate || 'Generate'}</a>
+        <a href="/{lang}/jobs" class="btn btn-secondary" style="padding:0.5rem 1rem">{t.nav.jobs || 'Jobs'}</a>
+        <a href="/{lang}/pricing" class="btn btn-secondary" style="padding:0.5rem 1rem">{t.nav.pricing || 'Pricing'}</a>
+        {#if isLoggedIn}
+          <button class="btn btn-secondary" style="padding:0.5rem 1rem;font-size:0.8125rem" onclick={logout}>{t.nav.logout || 'Logout'}</button>
+        {:else}
+          <a href="/{lang}/auth" class="btn btn-primary" style="padding:0.5rem 1.25rem;font-weight:600">
+            <span>{t.nav.login || 'Login'}</span>
+          </a>
+        {/if}
         <div data-lang-menu style="position:relative">
           <button class="btn btn-secondary" style="padding:0.5rem 0.75rem;font-size:0.8125rem;display:flex;align-items:center;gap:0.375rem" onclick={toggleLangMenu} aria-expanded={showLangMenu} aria-haspopup="true" aria-label={t.nav.language}>
             <span>{langInfo.flag}</span>
@@ -111,6 +118,8 @@
       </div>
       <div style="display:flex;gap:1.5rem;color:var(--text-secondary);font-size:0.875rem">
         <a href="/{lang}/editor" style="color:var(--text-secondary);transition:color 0.2s;position:relative" class="footer-link">{t.footer.createResume}</a>
+        <a href="/{lang}/jobs" style="color:var(--text-secondary);transition:color 0.2s;position:relative" class="footer-link">{t.nav.jobs || 'Jobs'}</a>
+        <a href="/{lang}/pricing" style="color:var(--text-secondary);transition:color 0.2s;position:relative" class="footer-link">{t.nav.pricing || 'Pricing'}</a>
         <a href="/{lang}/templates" style="color:var(--text-secondary);transition:color 0.2s;position:relative" class="footer-link">{t.footer.templates}</a>
       </div>
     </div>

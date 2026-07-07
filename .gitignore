@@ -10,3 +10,6 @@ data/
 nginx/ssl/
 .DS_Store
 *.log
+test_*.sh
+test_*.py
+check_*.py

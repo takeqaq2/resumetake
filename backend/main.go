@@ -13,6 +13,7 @@ import (
 	"net/smtp"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -33,6 +34,8 @@ import (
 )
 
 const maxResumes = 5000
+
+var userDataPath string
 
 type Store struct {
 	mu      sync.RWMutex
@@ -60,6 +63,13 @@ type UserStore struct {
 
 var userStore = &UserStore{users: make(map[string]*User)}
 
+func getUserDataPath() string {
+	if path := os.Getenv("USER_DATA_FILE"); path != "" {
+		return path
+	}
+	return "/app/data/users.json"
+}
+
 func (us *UserStore) GetByEmail(email string) (*User, bool) {
 	us.mu.RLock()
 	defer us.mu.RUnlock()
@@ -80,8 +90,62 @@ func (us *UserStore) GetByToken(token string) (*User, bool) {
 
 func (us *UserStore) Save(user *User) {
 	us.mu.Lock()
-	defer us.mu.Unlock()
 	us.users[user.Email] = user
+	us.mu.Unlock()
+	persistUsers()
+}
+
+func (us *UserStore) Load(path string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	loaded := make(map[string]*User)
+	if err := json.Unmarshal(b, &loaded); err != nil {
+		return err
+	}
+	us.mu.Lock()
+	us.users = loaded
+	if us.users == nil {
+		us.users = make(map[string]*User)
+	}
+	us.mu.Unlock()
+	return nil
+}
+
+func (us *UserStore) Persist(path string) error {
+	us.mu.RLock()
+	snapshot := make(map[string]*User, len(us.users))
+	for email, user := range us.users {
+		copyUser := *user
+		snapshot[email] = &copyUser
+	}
+	us.mu.RUnlock()
+
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, b, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func persistUsers() {
+	if userDataPath == "" {
+		return
+	}
+	if err := userStore.Persist(userDataPath); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to persist users: %v\n", err)
+	}
 }
 
 func generateToken(email string) string {
@@ -238,6 +302,7 @@ func sendVerificationEmail(toEmail, code string) error {
 	}
 	return client.Quit()
 }
+
 var startTime time.Time
 var totalRequests int64
 
@@ -1334,7 +1399,7 @@ func main() {
 				lastErr = fmt.Errorf("failed to parse %s result", p.Name)
 				continue
 			}
-		return c.JSON(fiber.Map{"success": true, "data": result})
+			return c.JSON(fiber.Map{"success": true, "data": result})
 		}
 		return c.Status(503).JSON(fiber.Map{"success": false, "error": lastErr.Error()})
 	})
@@ -1712,25 +1777,25 @@ Communicate with the user in English.`,
 				continue
 			}
 			content := groqResp.Choices[0].Message.Content
-		response := fiber.Map{"message": content}
-		var parsed map[string]interface{}
-		if err := json.Unmarshal([]byte(content), &parsed); err == nil {
-			if _, hasResume := parsed["resume"]; hasResume {
-				response["resume_complete"] = true
-				response["resume"] = parsed["resume"]
-			}
-		} else {
-			jsonRegex := regexp.MustCompile(`\{[\s\S]*"resume"[\s\S]*\}`)
-			if match := jsonRegex.FindString(content); match != "" {
-				if err2 := json.Unmarshal([]byte(match), &parsed); err2 == nil {
-					if _, hasResume := parsed["resume"]; hasResume {
-						response["resume_complete"] = true
-						response["resume"] = parsed["resume"]
+			response := fiber.Map{"message": content}
+			var parsed map[string]interface{}
+			if err := json.Unmarshal([]byte(content), &parsed); err == nil {
+				if _, hasResume := parsed["resume"]; hasResume {
+					response["resume_complete"] = true
+					response["resume"] = parsed["resume"]
+				}
+			} else {
+				jsonRegex := regexp.MustCompile(`\{[\s\S]*"resume"[\s\S]*\}`)
+				if match := jsonRegex.FindString(content); match != "" {
+					if err2 := json.Unmarshal([]byte(match), &parsed); err2 == nil {
+						if _, hasResume := parsed["resume"]; hasResume {
+							response["resume_complete"] = true
+							response["resume"] = parsed["resume"]
+						}
 					}
 				}
 			}
-		}
-		return c.JSON(fiber.Map{"success": true, "data": response})
+			return c.JSON(fiber.Map{"success": true, "data": response})
 		}
 		return c.Status(503).JSON(fiber.Map{"success": false, "error": lastErr.Error()})
 	})

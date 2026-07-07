@@ -171,6 +171,7 @@
     error = '';
     isOptimizing = true;
     startTime = Date.now();
+    showPerspective = false;
     try {
       const res = await fetch('/api/v1/optimize', {
         method: 'POST',
@@ -241,7 +242,7 @@
   let elapsed = $state(0);
   $effect(() => {
     if (isOptimizing && startTime) {
-      const iv = setInterval(() => { elapsed = ((Date.now() - startTime) / 1000).toFixed(1); }, 100);
+      const iv = setInterval(() => { elapsed = parseFloat(((Date.now() - startTime) / 1000).toFixed(1)); }, 100);
       return () => clearInterval(iv);
     }
   });
@@ -250,41 +251,52 @@
     const fileInput = document.getElementById('resume-file-input');
     const uploadZone = document.getElementById('upload-zone');
     const fetchBtn = document.getElementById('fetch-job-btn');
-    const optimizeBtn = document.getElementById('optimize-btn');
     const toggleBtn = document.getElementById('toggle-all-btn');
     const jobUrlInput = document.getElementById('job-url-input');
+    const cleanups = [];
 
     if (uploadZone && fileInput) {
-      uploadZone.addEventListener('click', (e) => {
-        if (e.target === fileInput) return;
-        fileInput.click();
-      });
-      uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); dragOver = true; });
-      uploadZone.addEventListener('dragleave', () => { dragOver = false; });
-      uploadZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dragOver = false;
-        if (e.dataTransfer.files.length > 0) uploadFile(e.dataTransfer.files[0]);
+      const clickHandler = (e) => { if (e.target === fileInput) return; fileInput.click(); };
+      const dragoverHandler = (e) => { e.preventDefault(); dragOver = true; };
+      const dragleaveHandler = () => { dragOver = false; };
+      const dropHandler = (e) => { e.preventDefault(); dragOver = false; if (e.dataTransfer.files.length > 0) uploadFile(e.dataTransfer.files[0]); };
+      uploadZone.addEventListener('click', clickHandler);
+      uploadZone.addEventListener('dragover', dragoverHandler);
+      uploadZone.addEventListener('dragleave', dragleaveHandler);
+      uploadZone.addEventListener('drop', dropHandler);
+      cleanups.push(() => {
+        uploadZone.removeEventListener('click', clickHandler);
+        uploadZone.removeEventListener('dragover', dragoverHandler);
+        uploadZone.removeEventListener('dragleave', dragleaveHandler);
+        uploadZone.removeEventListener('drop', dropHandler);
       });
     }
 
     if (fileInput) {
-      fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) uploadFile(e.target.files[0]);
-      });
+      const changeHandler = (e) => { if (e.target.files.length > 0) uploadFile(e.target.files[0]); };
+      fileInput.addEventListener('change', changeHandler);
+      cleanups.push(() => fileInput.removeEventListener('change', changeHandler));
     }
 
     if (fetchBtn) {
-      fetchBtn.addEventListener('click', () => fetchJobUrl());
+      const handler = () => fetchJobUrl();
+      fetchBtn.addEventListener('click', handler);
+      cleanups.push(() => fetchBtn.removeEventListener('click', handler));
     }
 
     if (toggleBtn) {
-      toggleBtn.addEventListener('click', () => toggleAll());
+      const handler = () => toggleAll();
+      toggleBtn.addEventListener('click', handler);
+      cleanups.push(() => toggleBtn.removeEventListener('click', handler));
     }
 
     if (jobUrlInput) {
-      jobUrlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') fetchJobUrl(); });
+      const handler = (e) => { if (e.key === 'Enter') fetchJobUrl(); };
+      jobUrlInput.addEventListener('keydown', handler);
+      cleanups.push(() => jobUrlInput.removeEventListener('keydown', handler));
     }
+
+    return () => cleanups.forEach(fn => fn());
   });
 </script>
 

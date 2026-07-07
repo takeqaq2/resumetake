@@ -117,6 +117,9 @@ func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 }
 
 func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+	if !more {
+		return nil, nil
+	}
 	challenge := strings.TrimRight(strings.ToLower(string(fromServer)), ": ")
 	switch challenge {
 	case "username":

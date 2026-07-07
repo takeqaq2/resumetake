@@ -13,3 +13,7 @@ nginx/ssl/
 test_*.sh
 test_*.py
 check_*.py
+*.exe
+auto_cancel.py
+skills-lock.json
+.agents/

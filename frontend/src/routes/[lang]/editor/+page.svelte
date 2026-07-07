@@ -28,6 +28,10 @@
     ats: true, star: true, quant: true, summary: true, format: true
   });
 
+  let usageCount = $state(0);
+  let maxFreeUsage = $state(5);
+  let copied = $state(false);
+
   const allModules = ['ats', 'star', 'quant', 'summary', 'format'];
 
   let allSelected = $derived(allModules.every(m => modules[m]));
@@ -36,6 +40,43 @@
     const val = !allSelected;
     allModules.forEach(m => modules[m] = val);
   }
+
+  function copyOptimized() {
+    if (!result?.optimized_content) return;
+    const c = result.optimized_content;
+    let text = '';
+    if (c.summary) text += `Summary:\n${c.summary}\n\n`;
+    if (c.experience?.length) {
+      text += 'Experience:\n';
+      c.experience.forEach(e => {
+        text += `  ${e.position} @ ${e.company} (${e.duration})\n`;
+        e.highlights?.forEach(h => text += `    - ${h}\n`);
+        text += '\n';
+      });
+    }
+    if (c.skills?.length) text += `Skills: ${c.skills.join(', ')}\n\n`;
+    if (c.education?.length) {
+      text += 'Education:\n';
+      c.education.forEach(e => text += `  ${e.degree} in ${e.major}, ${e.school}\n`);
+    }
+    navigator.clipboard.writeText(text).then(() => {
+      copied = true;
+      setTimeout(() => copied = false, 2000);
+    });
+  }
+
+  onMount(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch('/api/v1/auth/me', { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(r => r.json()).then(d => {
+          if (d.success && d.data) {
+            usageCount = d.data.usage_count || 0;
+            maxFreeUsage = d.data.max_free_usage || 5;
+          }
+        }).catch(() => {});
+    }
+  });
 
   async function uploadFile(file) {
     if (!file) return;
@@ -125,6 +166,8 @@
       const data = await res.json();
       if (data.success && data.data) {
         result = data.data;
+        if (data.usage_count !== undefined) usageCount = data.usage_count;
+        if (data.max_free_usage !== undefined) maxFreeUsage = data.max_free_usage;
       } else {
         if (res.status === 401 || res.status === 403) {
           error = lang === 'zh' ? '请先登录后再使用AI优化' : 'Please login first to use AI optimization';
@@ -334,6 +377,12 @@
         <div class="error-msg"><span>⚠️</span> {error}</div>
       {/if}
 
+      {#if !isOptimizing && !result && usageCount > 0}
+        <div style="font-size:0.8125rem;color:var(--text-secondary);text-align:center;padding:0.5rem;background:var(--bg-surface);border-radius:var(--radius)">
+          {lang === 'zh' ? `今日已使用 ${usageCount}/${maxFreeUsage} 次` : `Used ${usageCount}/${maxFreeUsage} optimizations today`}
+        </div>
+      {/if}
+
       {#if isOptimizing}
         <div class="optimizing-card">
           <div class="optimizing-spinner"></div>
@@ -341,7 +390,7 @@
           <span style="opacity:0.6;font-size:0.8125rem">{elapsed}s</span>
         </div>
       {:else}
-        <button id="optimize-btn" class="optimize-btn">
+        <button id="optimize-btn" class="optimize-btn" onclick={optimize} disabled={isOptimizing}>
           <span style="position:relative;z-index:1;display:flex;align-items:center;gap:0.5rem">{t.editor.optimizeBtn}</span>
         </button>
       {/if}
@@ -350,6 +399,9 @@
         <div class="success-msg">
           <span>✅</span> {t.editor.optimized}
           {#if elapsed > 0}<span style="opacity:0.6;font-size:0.8125rem;margin-left:0.5rem">{t.editor.optimizedTime}: {elapsed}s</span>{/if}
+          {#if maxFreeUsage > 0}
+            <span style="opacity:0.6;font-size:0.75rem;margin-left:auto">{lang === 'zh' ? `剩余 ${maxFreeUsage - usageCount}/${maxFreeUsage} 次` : `${maxFreeUsage - usageCount}/${maxFreeUsage} remaining`}</span>
+          {/if}
         </div>
       {/if}
 
@@ -451,6 +503,12 @@
                   {/if}
                 </div>
               </div>
+            {/if}
+
+            {#if result.optimized_content}
+              <button onclick={copyOptimized} style="width:100%;padding:0.75rem;border-radius:var(--radius);border:1px solid var(--primary);background:transparent;color:var(--primary);font-weight:600;cursor:pointer;font-size:0.875rem;transition:all 0.2s">
+                {copied ? (lang === 'zh' ? '✅ 已复制' : '✅ Copied!') : (lang === 'zh' ? '📋 复制优化后简历' : '📋 Copy Optimized Resume')}
+              </button>
             {/if}
           </div>
         </div>

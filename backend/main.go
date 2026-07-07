@@ -1215,7 +1215,7 @@ func main() {
 				lastErr = fmt.Errorf("failed to parse %s result", p.Name)
 				continue
 			}
-			return c.JSON(fiber.Map{"success": true, "data": result})
+		return c.JSON(fiber.Map{"success": true, "data": result, "usage_count": user.UsageCount, "max_free_usage": user.MaxFreeUsage})
 		}
 		return c.Status(503).JSON(fiber.Map{"success": false, "error": lastErr.Error()})
 	})

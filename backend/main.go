@@ -722,13 +722,22 @@ func callAIWithProvider(provider AIProvider, userMsg, lang string) (map[string]i
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%s service unavailable", provider.Name)
+		fmt.Printf("[AI] %s request error: %s\n", provider.Name, err.Error())
+		return nil, fmt.Errorf("%s: %s", provider.Name, err.Error())
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %s response", provider.Name)
+	}
+	fmt.Printf("[AI] %s response status: %d, body_len: %d\n", provider.Name, resp.StatusCode, len(body))
+	if resp.StatusCode != 200 {
+		preview := string(body)
+		if len(preview) > 300 {
+			preview = preview[:300]
+		}
+		fmt.Printf("[AI] %s error body: %s\n", provider.Name, preview)
 	}
 
 	var groqResp GroqResponse

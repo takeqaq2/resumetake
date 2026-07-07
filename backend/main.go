@@ -315,7 +315,9 @@ var httpClient = &http.Client{
 }
 
 var prompts = map[string]string{
-	"zh": `你是一位专业的简历优化顾问。请根据用户提供的简历信息和目标职位，优化简历内容。
+	"zh": `重要：你必须只输出一个有效的JSON对象。JSON前后不要有任何文字、解释或markdown。只输出纯JSON。
+
+你是一位专业的简历优化顾问。请根据用户提供的简历信息和目标职位，优化简历内容。
 
 要求：
 1. 用中文输出
@@ -324,7 +326,7 @@ var prompts = map[string]string{
 4. 提取并匹配ATS关键词
 5. 优化个人简介，突出核心竞争力
 
-请返回JSON格式：
+请只返回以下JSON结构：
 {
   "optimized_content": {
     "summary": "优化后的个人简介",
@@ -336,7 +338,9 @@ var prompts = map[string]string{
   "keywords": ["关键词1", "关键词2"],
   "suggestions": ["建议1", "建议2"]
 }`,
-	"en": `You are a professional resume optimization consultant. Optimize the resume based on the user's information and target job.
+	"en": `CRITICAL: You MUST respond with ONLY a valid JSON object. No text before or after the JSON. No markdown. No explanation.
+
+You are a professional resume optimization consultant. Optimize the resume based on the user's information and target job.
 
 Requirements:
 1. Output in English
@@ -345,7 +349,7 @@ Requirements:
 4. Extract and match ATS keywords
 5. Optimize professional summary
 
-Return JSON format:
+Return ONLY this JSON structure:
 {
   "optimized_content": {
     "summary": "Optimized professional summary",
@@ -630,7 +634,7 @@ func getAIProviders() []AIProvider {
 		providers = append(providers, AIProvider{
 			Name:    "siliconflow",
 			BaseURL: "https://api.siliconflow.cn/v1",
-			Model:   "Qwen/Qwen2.5-7B-Instruct",
+			Model:   "Qwen/Qwen3-14B",
 			APIKey:  key,
 		})
 	}
@@ -762,7 +766,16 @@ func callAIWithProvider(provider AIProvider, userMsg, lang string) (map[string]i
 
 	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		fmt.Printf("[AI] %s parse failed, raw content: %s\n", provider.Name, content[:min(len(content), 300)])
+		jsonRegex := regexp.MustCompile(`\{[\s\S]*\}`)
+		if match := jsonRegex.FindString(content); match != "" {
+			fmt.Printf("[AI] %s: extracted JSON from non-JSON response\n", provider.Name)
+			if err2 := json.Unmarshal([]byte(match), &result); err2 != nil {
+				fmt.Printf("[AI] %s extract failed, raw: %s\n", provider.Name, content)
+				return nil, fmt.Errorf("failed to parse %s result", provider.Name)
+			}
+			return result, nil
+		}
+		fmt.Printf("[AI] %s parse failed, raw content: %s\n", provider.Name, content)
 		return nil, fmt.Errorf("failed to parse %s result", provider.Name)
 	}
 	return result, nil

@@ -100,14 +100,14 @@
 
   async function uploadFile(file) {
     if (!file) return;
-    const allowed = ['.txt', '.pdf', '.doc', '.docx'];
+    const allowed = ['.txt', '.md'];
     const ext = '.' + file.name.split('.').pop().toLowerCase();
     if (!allowed.includes(ext)) {
       error = t.editor.uploadError;
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      error = t.editor.uploadError;
+    if (file.size > 1024 * 1024) {
+      error = lang === 'zh' ? '文件不能超过 1MB' : 'File must be 1MB or smaller';
       return;
     }
     error = '';
@@ -327,7 +327,7 @@
         <label for="resume-text" class="label" style="font-weight:600;color:var(--text);font-size:0.9375rem;margin-bottom:0.75rem;display:block">📋 {t.editor.pasteResume}</label>
 
         <div id="upload-zone" class="upload-zone {dragOver ? 'drag-over' : ''}" role="button" tabindex="0">
-          <input id="resume-file-input" type="file" accept=".txt,.pdf,.doc,.docx" style="display:none">
+          <input id="resume-file-input" type="file" accept=".txt,.md,text/plain,text/markdown" style="display:none">
           {#if isUploading}
             <div class="upload-spinner"></div>
             <span class="upload-text">{t.editor.uploading}</span>

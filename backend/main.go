@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
@@ -34,8 +35,14 @@ import (
 )
 
 const maxResumes = 5000
+const maxUploadBytes = 1 * 1024 * 1024
 
 var userDataPath string
+
+var allowedUploadExt = map[string]bool{
+	".txt": true,
+	".md":  true,
+}
 
 type Store struct {
 	mu      sync.RWMutex
@@ -1156,30 +1163,52 @@ func main() {
 		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "NO_FILE", "message": "No file uploaded"})
 		}
-		if file.Size > 5*1024*1024 {
-			return c.Status(400).JSON(fiber.Map{"error": "FILE_TOO_LARGE", "message": "File too large (max 5MB)"})
+		if file.Size <= 0 {
+			return c.Status(400).JSON(fiber.Map{"error": "EMPTY_FILE", "message": "File is empty"})
 		}
-		ext := strings.ToLower(file.Filename)
-		if !strings.HasSuffix(ext, ".txt") && !strings.HasSuffix(ext, ".pdf") && !strings.HasSuffix(ext, ".doc") && !strings.HasSuffix(ext, ".docx") {
-			return c.Status(400).JSON(fiber.Map{"error": "INVALID_TYPE", "message": "Only .txt, .pdf, .doc, .docx files supported"})
+		if file.Size > maxUploadBytes {
+			return c.Status(400).JSON(fiber.Map{"error": "FILE_TOO_LARGE", "message": "File too large (max 1MB)"})
+		}
+		filename := filepath.Base(file.Filename)
+		if filename != file.Filename || strings.Contains(filename, "\x00") {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_FILENAME", "message": "Invalid filename"})
+		}
+		ext := strings.ToLower(filepath.Ext(filename))
+		if !allowedUploadExt[ext] {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_TYPE", "message": "Only .txt and .md files are supported for safe text parsing"})
+		}
+		contentType := strings.ToLower(file.Header.Get("Content-Type"))
+		if contentType != "" && !strings.HasPrefix(contentType, "text/plain") && contentType != "application/octet-stream" {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_MIME", "message": "Only plain text files are supported"})
 		}
 		f, err := file.Open()
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "READ_ERROR", "message": "Failed to read file"})
 		}
 		defer f.Close()
-		content, err := io.ReadAll(f)
+		content, err := io.ReadAll(io.LimitReader(f, maxUploadBytes+1))
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "READ_ERROR", "message": "Failed to read file content"})
 		}
+		if len(content) > maxUploadBytes {
+			return c.Status(400).JSON(fiber.Map{"error": "FILE_TOO_LARGE", "message": "File too large (max 1MB)"})
+		}
+		if bytes.Contains(content, []byte{0}) || !utf8.Valid(content) {
+			return c.Status(400).JSON(fiber.Map{"error": "UNSAFE_CONTENT", "message": "Only valid UTF-8 text files are supported"})
+		}
 		text := string(content)
+		text = strings.ReplaceAll(text, "\r\n", "\n")
+		text = strings.TrimSpace(text)
+		if text == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "EMPTY_CONTENT", "message": "Resume text is empty"})
+		}
 		if len(text) > 15000 {
 			text = text[:15000]
 		}
 		return c.JSON(fiber.Map{
 			"success": true,
 			"data": map[string]interface{}{
-				"filename": file.Filename,
+				"filename": filename,
 				"size":     file.Size,
 				"text":     text,
 			},
@@ -1709,6 +1738,13 @@ func main() {
 			return c.IP()
 		},
 	}), func(c *fiber.Ctx) error {
+		if os.Getenv("ENABLE_GENERATE_RESUME") != "true" {
+			return c.Status(402).JSON(fiber.Map{
+				"success": false,
+				"error":   "PAYMENT_REQUIRED",
+				"message": "Zero-basis resume generation is a paid feature and is temporarily disabled while payment is being configured.",
+			})
+		}
 		var body struct {
 			Messages []GroqMessage `json:"messages"`
 			Lang     string        `json:"lang"`

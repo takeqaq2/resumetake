@@ -12,6 +12,14 @@
   let showViewButton = $state(false);
   let chatContainer = $state(null);
 
+  const generateLocked = true;
+  const lockedText = {
+    zh: { title: '0基础生成暂未开放', desc: '这个功能会消耗更多 AI token，之后将按次付费开放。预计中国区约 ¥9.9/次。', cta: '查看付费方案' },
+    en: { title: 'Resume generation is temporarily locked', desc: 'This feature uses more AI tokens and will be available as a pay-per-use feature. US pricing is planned around $1.9/use.', cta: 'View pricing' }
+  };
+
+  let lock = $derived(lockedText[lang] || lockedText.en);
+
   function scrollToBottom() {
     if (chatContainer) {
       chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -101,6 +109,16 @@
     </div>
   </div>
 
+  {#if generateLocked}
+    <div class="locked-panel">
+      <div class="locked-card">
+        <div class="locked-icon">🔒</div>
+        <h2>{lock.title}</h2>
+        <p>{lock.desc}</p>
+        <a href="/{lang}/pricing" class="btn btn-primary">{lock.cta}</a>
+      </div>
+    </div>
+  {:else}
   <div class="chat-container" bind:this={chatContainer}>
     <div class="chat-messages">
       {#each messages as msg}
@@ -144,6 +162,7 @@
       </button>
     </div>
   </div>
+  {/if}
 </div>
 
 <style>
@@ -154,6 +173,18 @@
     padding: 1rem 0; border-bottom: 1px solid var(--border);
     background: var(--bg-glass); backdrop-filter: blur(12px);
   }
+  .locked-panel {
+    flex: 1; display: grid; place-items: center; padding: 2rem 1.5rem;
+    background: var(--gradient-hero); background-size: 200% 200%;
+  }
+  .locked-card {
+    width: min(100%, 34rem); padding: 2rem; border-radius: var(--radius-lg);
+    background: var(--bg-glass); border: 1px solid var(--border); text-align: center;
+    box-shadow: var(--shadow-lg); backdrop-filter: blur(16px);
+  }
+  .locked-icon { font-size: 2.5rem; margin-bottom: 1rem; }
+  .locked-card h2 { font-size: 1.35rem; margin-bottom: 0.75rem; color: var(--text); }
+  .locked-card p { color: var(--text-secondary); line-height: 1.7; margin-bottom: 1.5rem; }
   .chat-container {
     flex: 1; overflow-y: auto; padding: 1.5rem;
   }

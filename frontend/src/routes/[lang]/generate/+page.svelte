@@ -48,13 +48,14 @@
         })
       });
       const data = await res.json();
-      if (data.success && data.message) {
-        messages = [...messages, { role: 'ai', content: data.message }];
-        if (data.resume_complete) {
+      if (data.success && (data.data?.message || data.message)) {
+        const msg = data.data?.message || data.message;
+        messages = [...messages, { role: 'ai', content: msg }];
+        if (data.data?.resume_complete || data.resume_complete) {
           showViewButton = true;
         }
       } else {
-        messages = [...messages, { role: 'ai', content: data.message || (lang === 'zh' ? '抱歉，出了点问题，请重试。' : 'Sorry, something went wrong. Please try again.') }];
+        messages = [...messages, { role: 'ai', content: data.data?.message || data.message || (lang === 'zh' ? '抱歉，出了点问题，请重试。' : 'Sorry, something went wrong. Please try again.') }];
       }
     } catch {
       messages = [...messages, { role: 'ai', content: lang === 'zh' ? '网络错误，请重试。' : 'Network error, please try again.' }];

@@ -1593,9 +1593,25 @@ Communicate with the user in English.`,
 				continue
 			}
 			content := groqResp.Choices[0].Message.Content
-			return c.JSON(fiber.Map{"success": true, "data": fiber.Map{
-				"message": content,
-			}})
+		response := fiber.Map{"message": content}
+		var parsed map[string]interface{}
+		if err := json.Unmarshal([]byte(content), &parsed); err == nil {
+			if _, hasResume := parsed["resume"]; hasResume {
+				response["resume_complete"] = true
+				response["resume"] = parsed["resume"]
+			}
+		} else {
+			jsonRegex := regexp.MustCompile(`\{[\s\S]*"resume"[\s\S]*\}`)
+			if match := jsonRegex.FindString(content); match != "" {
+				if err2 := json.Unmarshal([]byte(match), &parsed); err2 == nil {
+					if _, hasResume := parsed["resume"]; hasResume {
+						response["resume_complete"] = true
+						response["resume"] = parsed["resume"]
+					}
+				}
+			}
+		}
+		return c.JSON(fiber.Map{"success": true, "data": response})
 		}
 		return c.Status(503).JSON(fiber.Map{"success": false, "error": lastErr.Error()})
 	})

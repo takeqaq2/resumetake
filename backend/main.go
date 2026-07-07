@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
@@ -54,25 +55,29 @@ type Store struct {
 var store = &Store{resumes: make(map[string]map[string]interface{})}
 
 type User struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	Password     string    `json:"-"`
-	Name         string    `json:"name"`
-	Token        string    `json:"token"`
-	UsageCount   int       `json:"usage_count"`
-	MaxFreeUsage int       `json:"max_free_usage"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	Email          string    `json:"email"`
+	Password       string    `json:"-"`
+	Name           string    `json:"name"`
+	Token          string    `json:"token"`
+	UsageCount     int       `json:"usage_count"`
+	MaxFreeUsage   int       `json:"max_free_usage"`
+	Plan           string    `json:"plan"`
+	SubscriptionID string    `json:"subscription_id,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type persistedUser struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	Password     string    `json:"password"`
-	Name         string    `json:"name"`
-	Token        string    `json:"token"`
-	UsageCount   int       `json:"usage_count"`
-	MaxFreeUsage int       `json:"max_free_usage"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	Email          string    `json:"email"`
+	Password       string    `json:"password"`
+	Name           string    `json:"name"`
+	Token          string    `json:"token"`
+	UsageCount     int       `json:"usage_count"`
+	MaxFreeUsage   int       `json:"max_free_usage"`
+	Plan           string    `json:"plan"`
+	SubscriptionID string    `json:"subscription_id,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type UserStore struct {
@@ -135,14 +140,16 @@ func (us *UserStore) Load(path string) error {
 	users := make(map[string]*User, len(loaded))
 	for email, user := range loaded {
 		users[email] = &User{
-			ID:           user.ID,
-			Email:        user.Email,
-			Password:     user.Password,
-			Name:         user.Name,
-			Token:        user.Token,
-			UsageCount:   user.UsageCount,
-			MaxFreeUsage: user.MaxFreeUsage,
-			CreatedAt:    user.CreatedAt,
+			ID:             user.ID,
+			Email:          user.Email,
+			Password:       user.Password,
+			Name:           user.Name,
+			Token:          user.Token,
+			UsageCount:     user.UsageCount,
+			MaxFreeUsage:   user.MaxFreeUsage,
+			Plan:           user.Plan,
+			SubscriptionID: user.SubscriptionID,
+			CreatedAt:      user.CreatedAt,
 		}
 	}
 	us.mu.Lock()
@@ -159,14 +166,16 @@ func (us *UserStore) Persist(path string) error {
 	snapshot := make(map[string]*persistedUser, len(us.users))
 	for email, user := range us.users {
 		snapshot[email] = &persistedUser{
-			ID:           user.ID,
-			Email:        user.Email,
-			Password:     user.Password,
-			Name:         user.Name,
-			Token:        user.Token,
-			UsageCount:   user.UsageCount,
-			MaxFreeUsage: user.MaxFreeUsage,
-			CreatedAt:    user.CreatedAt,
+			ID:             user.ID,
+			Email:          user.Email,
+			Password:       user.Password,
+			Name:           user.Name,
+			Token:          user.Token,
+			UsageCount:     user.UsageCount,
+			MaxFreeUsage:   user.MaxFreeUsage,
+			Plan:           user.Plan,
+			SubscriptionID: user.SubscriptionID,
+			CreatedAt:      user.CreatedAt,
 		}
 	}
 	us.mu.RUnlock()
@@ -1291,7 +1300,7 @@ func main() {
 		},
 	}), func(c *fiber.Ctx) error {
 		user := c.Locals("user").(*User)
-		if user.UsageCount >= user.MaxFreeUsage {
+		if user.Plan == "free" && user.UsageCount >= user.MaxFreeUsage {
 			return c.Status(403).JSON(fiber.Map{"error": "LIMIT_EXCEEDED", "message": "Free usage limit exceeded. Please upgrade."})
 		}
 		userStore.mu.Lock()
@@ -1638,6 +1647,7 @@ func main() {
 			Password:     hex.EncodeToString(hash[:]),
 			Name:         body.Name,
 			Token:        token,
+			Plan:         "free",
 			MaxFreeUsage: 5,
 			CreatedAt:    time.Now(),
 		}
@@ -2002,6 +2012,72 @@ Communicate with the user in English.`,
 			return c.Status(502).JSON(fiber.Map{"error": "STRIPE_ERROR", "message": errMsg})
 		}
 		return c.JSON(fiber.Map{"success": true, "url": result["url"]})
+	})
+
+	v1.Post("/stripe-webhook", func(c *fiber.Ctx) error {
+		webhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+		body := c.Body()
+		sigHeader := c.Get("Stripe-Signature")
+
+		if webhookSecret != "" && sigHeader != "" {
+			parts := strings.Split(sigHeader, ",")
+			var timestamp string
+			var expectedSig string
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if strings.HasPrefix(p, "t=") {
+					timestamp = p[2:]
+				} else if strings.HasPrefix(p, "v1=") {
+					expectedSig = p[3:]
+				}
+			}
+			if timestamp != "" && expectedSig != "" {
+				signedPayload := timestamp + "." + string(body)
+				mac := hmac.New(sha256.New, []byte(webhookSecret))
+				mac.Write([]byte(signedPayload))
+				computed := hex.EncodeToString(mac.Sum(nil))
+				if !hmac.Equal([]byte(computed), []byte(expectedSig)) {
+					return c.Status(400).JSON(fiber.Map{"error": "INVALID_SIGNATURE", "message": "Webhook signature mismatch"})
+				}
+			}
+		}
+
+		var event struct {
+			Type string `json:"type"`
+			Data struct {
+				Object struct {
+					ID               string `json:"id"`
+					PaymentStatus    string `json:"payment_status"`
+					Metadata         map[string]string `json:"metadata"`
+					Subscription     string `json:"subscription"`
+					CustomerEmail    string `json:"customer_email"`
+				} `json:"object"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &event); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_EVENT", "message": "Invalid webhook event"})
+		}
+
+		if event.Type == "checkout.session.completed" {
+			obj := event.Data.Object
+			userID := obj.Metadata["user_id"]
+			plan := obj.Metadata["plan"]
+			if userID != "" && plan != "" {
+				userStore.mu.Lock()
+				for _, u := range userStore.users {
+					if u.ID == userID {
+						u.Plan = plan
+						u.SubscriptionID = obj.Subscription
+						u.MaxFreeUsage = -1
+						break
+					}
+				}
+				userStore.mu.Unlock()
+				go persistUsers()
+			}
+		}
+
+		return c.JSON(fiber.Map{"success": true})
 	})
 
 	quit := make(chan os.Signal, 1)

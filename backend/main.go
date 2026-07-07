@@ -729,7 +729,6 @@ func callAIWithProvider(provider AIProvider, userMsg, lang string) (map[string]i
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		fmt.Printf("[AI] %s request error: %s\n", provider.Name, err.Error())
 		return nil, fmt.Errorf("%s: %s", provider.Name, err.Error())
 	}
 	defer resp.Body.Close()
@@ -737,14 +736,6 @@ func callAIWithProvider(provider AIProvider, userMsg, lang string) (map[string]i
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %s response", provider.Name)
-	}
-	fmt.Printf("[AI] %s response status: %d, body_len: %d\n", provider.Name, resp.StatusCode, len(body))
-	if resp.StatusCode != 200 {
-		preview := string(body)
-		if len(preview) > 300 {
-			preview = preview[:300]
-		}
-		fmt.Printf("[AI] %s error body: %s\n", provider.Name, preview)
 	}
 
 	var groqResp GroqResponse
@@ -768,14 +759,11 @@ func callAIWithProvider(provider AIProvider, userMsg, lang string) (map[string]i
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
 		jsonRegex := regexp.MustCompile(`\{[\s\S]*\}`)
 		if match := jsonRegex.FindString(content); match != "" {
-			fmt.Printf("[AI] %s: extracted JSON from non-JSON response\n", provider.Name)
 			if err2 := json.Unmarshal([]byte(match), &result); err2 != nil {
-				fmt.Printf("[AI] %s extract failed, raw: %s\n", provider.Name, content)
 				return nil, fmt.Errorf("failed to parse %s result", provider.Name)
 			}
 			return result, nil
 		}
-		fmt.Printf("[AI] %s parse failed, raw content: %s\n", provider.Name, content)
 		return nil, fmt.Errorf("failed to parse %s result", provider.Name)
 	}
 	return result, nil
@@ -814,13 +802,10 @@ func callAI(resumeContent, targetJob, jobDescription, lang, moduleHints string) 
 
 	var lastErr error
 	for _, p := range providers {
-		fmt.Printf("[AI] Trying provider: %s (model: %s)\n", p.Name, p.Model)
 		result, err := callAIWithProvider(p, userMsg, lang)
 		if err == nil {
-			fmt.Printf("[AI] Success with provider: %s\n", p.Name)
 			return result, nil
 		}
-		fmt.Printf("[AI] Provider %s failed: %s\n", p.Name, err.Error())
 		lastErr = err
 	}
 
@@ -1108,7 +1093,6 @@ func main() {
 
 		result, err := callAI(resumeContent, targetJob, jobDesc, lang, moduleHints)
 		if err != nil {
-			fmt.Printf("[OPTIMIZE] Error: %s\n", err.Error())
 			return c.Status(503).JSON(fiber.Map{
 				"success": false,
 				"error":   "Service temporarily unavailable, please try again later",

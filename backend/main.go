@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
-	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -12,7 +12,6 @@ import (
 	"math/rand"
 	"net/http"
 	"net/smtp"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -1127,6 +1126,7 @@ func main() {
 			"memory":           fmt.Sprintf("%d MB", getMemUsage()),
 			"users":            userStore.Count(),
 			"user_persistence": userDataPath != "",
+			"generate_resume_enabled": os.Getenv("ENABLE_GENERATE_RESUME") == "true",
 		})
 	})
 
@@ -1945,9 +1945,9 @@ Communicate with the user in English.`,
 		return c.JSON(fiber.Map{"success": true, "data": tiers})
 	})
 
-	v1.Post("/create-checkout-session", authMiddleware, func(c *fiber.Ctx) error {
-		stripeKey := os.Getenv("STRIPE_SECRET_KEY")
-		if stripeKey == "" {
+	v1.Post("/create-paypal-order", authMiddleware, func(c *fiber.Ctx) error {
+		paypalClientID := os.Getenv("PAYPAL_CLIENT_ID")
+		if paypalClientID == "" {
 			return c.Status(503).JSON(fiber.Map{"error": "PAYMENT_NOT_CONFIGURED", "message": "Payment system not configured"})
 		}
 		var body struct {
@@ -1961,118 +1961,103 @@ Communicate with the user in English.`,
 			body.Lang = "en"
 		}
 		user := c.Locals("user").(*User)
-		priceAmounts := map[string]int{
-			"pro":        990,
-			"enterprise": 4990,
+		priceAmounts := map[string]string{
+			"pro":        "9.90",
+			"enterprise": "49.90",
 		}
 		priceNames := map[string]string{
-			"pro":        "ResumeTake Pro",
-			"enterprise": "ResumeTake Enterprise",
+			"pro":        "ResumeTake Pro - Monthly",
+			"enterprise": "ResumeTake Enterprise - Monthly",
 		}
 		amount, ok := priceAmounts[body.Plan]
 		if !ok {
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_PLAN", "message": "Invalid plan"})
 		}
-		formBody := fmt.Sprintf(
-			"mode=payment&payment_method_types[]=card"+
-				"&customer_email=%s"+
-				"&line_items[0][price_data][currency]=usd"+
-				"&line_items[0][price_data][product_data][name]=%s"+
-				"&line_items[0][price_data][unit_amount]=%d"+
-				"&line_items[0][quantity]=1"+
-				"&success_url=%s"+
-				"&cancel_url=%s"+
-				"&metadata[user_id]=%s"+
-				"&metadata[plan]=%s",
-			url.QueryEscape(user.Email),
-			url.QueryEscape(priceNames[body.Plan]),
-			amount,
-			url.QueryEscape("https://resume.takee.top/"+body.Lang+"/pricing?session_id={CHECKOUT_SESSION_ID}"),
-			url.QueryEscape("https://resume.takee.top/"+body.Lang+"/pricing"),
-			user.ID,
-			body.Plan,
-		)
-		req, err := http.NewRequest("POST", "https://api.stripe.com/v1/checkout/sessions", strings.NewReader(formBody))
+
+		accessToken, err := getPayPalAccessToken()
 		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "INTERNAL", "message": "Failed to create checkout session"})
+			return c.Status(502).JSON(fiber.Map{"error": "PAYPAL_ERROR", "message": "Failed to connect to PayPal"})
 		}
-		req.Header.Set("Authorization", "Bearer "+stripeKey)
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		resp, err := httpClient.Do(req)
+
+		orderID := fmt.Sprintf("rt_%s_%d", user.ID[:8], time.Now().Unix())
+		returnURL := fmt.Sprintf("https://resume.takee.top/%s/pricing?payment=success&order_id=%s", body.Lang, orderID)
+		cancelURL := fmt.Sprintf("https://resume.takee.top/%s/pricing?payment=cancelled", body.Lang)
+
+		paypalOrderID, err := createPayPalOrder(accessToken, amount, "USD", priceNames[body.Plan], orderID, returnURL, cancelURL)
 		if err != nil {
-			return c.Status(502).JSON(fiber.Map{"error": "STRIPE_ERROR", "message": "Failed to connect to Stripe"})
+			return c.Status(502).JSON(fiber.Map{"error": "PAYPAL_ERROR", "message": err.Error()})
 		}
-		defer resp.Body.Close()
-		var result map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "INTERNAL", "message": "Invalid Stripe response"})
-		}
-		if resp.StatusCode != 200 {
-			errMsg := "Unknown error"
-			if e, ok := result["error"].(map[string]interface{}); ok {
-				if msg, ok := e["message"].(string); ok {
-					errMsg = msg
-				}
-			}
-			return c.Status(502).JSON(fiber.Map{"error": "STRIPE_ERROR", "message": errMsg})
-		}
-		return c.JSON(fiber.Map{"success": true, "url": result["url"]})
+
+		return c.JSON(fiber.Map{
+			"success":       true,
+			"order_id":      paypalOrderID,
+			"client_id":     paypalClientID,
+			"plan":          body.Plan,
+			"amount":        amount,
+			"currency":      "USD",
+		})
 	})
 
-	v1.Post("/stripe-webhook", func(c *fiber.Ctx) error {
-		webhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
-		body := c.Body()
-		sigHeader := c.Get("Stripe-Signature")
-
-		if webhookSecret != "" && sigHeader != "" {
-			parts := strings.Split(sigHeader, ",")
-			var timestamp string
-			var expectedSig string
-			for _, p := range parts {
-				p = strings.TrimSpace(p)
-				if strings.HasPrefix(p, "t=") {
-					timestamp = p[2:]
-				} else if strings.HasPrefix(p, "v1=") {
-					expectedSig = p[3:]
-				}
-			}
-			if timestamp != "" && expectedSig != "" {
-				signedPayload := timestamp + "." + string(body)
-				mac := hmac.New(sha256.New, []byte(webhookSecret))
-				mac.Write([]byte(signedPayload))
-				computed := hex.EncodeToString(mac.Sum(nil))
-				if !hmac.Equal([]byte(computed), []byte(expectedSig)) {
-					return c.Status(400).JSON(fiber.Map{"error": "INVALID_SIGNATURE", "message": "Webhook signature mismatch"})
-				}
-			}
+	v1.Post("/capture-paypal-order", authMiddleware, func(c *fiber.Ctx) error {
+		var body struct {
+			OrderID string `json:"order_id"`
+			Plan    string `json:"plan"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
+		}
+		if body.OrderID == "" {
+			return c.Status(400).JSON(fiber.Map{"error": "MISSING_ORDER_ID", "message": "Order ID is required"})
 		}
 
+		accessToken, err := getPayPalAccessToken()
+		if err != nil {
+			return c.Status(502).JSON(fiber.Map{"error": "PAYPAL_ERROR", "message": "Failed to connect to PayPal"})
+		}
+
+		result, err := capturePayPalOrder(accessToken, body.OrderID)
+		if err != nil {
+			return c.Status(502).JSON(fiber.Map{"error": "PAYPAL_ERROR", "message": err.Error()})
+		}
+
+		status, _ := result["status"].(string)
+		if status != "COMPLETED" {
+			return c.Status(400).JSON(fiber.Map{"error": "PAYMENT_INCOMPLETE", "message": "Payment not completed"})
+		}
+
+		user := c.Locals("user").(*User)
+		userStore.mu.Lock()
+		user.Plan = body.Plan
+		user.MaxFreeUsage = -1
+		user.SubscriptionID = body.OrderID
+		userStore.mu.Unlock()
+		go persistUsers()
+
+		return c.JSON(fiber.Map{"success": true, "plan": body.Plan})
+	})
+
+	v1.Post("/paypal-webhook", func(c *fiber.Ctx) error {
+		body := c.Body()
 		var event struct {
-			Type string `json:"type"`
-			Data struct {
-				Object struct {
-					ID               string `json:"id"`
-					PaymentStatus    string `json:"payment_status"`
-					Metadata         map[string]string `json:"metadata"`
-					Subscription     string `json:"subscription"`
-					CustomerEmail    string `json:"customer_email"`
-				} `json:"object"`
-			} `json:"data"`
+			ID     string `json:"id"`
+			Event  string `json:"event_type"`
+			Resource struct {
+				ParentID string `json:"parent_id"`
+				ID       string `json:"id"`
+				Status   string `json:"status"`
+			} `json:"resource"`
 		}
 		if err := json.Unmarshal(body, &event); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_EVENT", "message": "Invalid webhook event"})
 		}
 
-		if event.Type == "checkout.session.completed" {
-			obj := event.Data.Object
-			userID := obj.Metadata["user_id"]
-			plan := obj.Metadata["plan"]
-			if userID != "" && plan != "" {
+		if event.Event == "PAYMENT.CAPTURE.COMPLETED" && event.Resource.Status == "COMPLETED" {
+			orderID := event.Resource.ParentID
+			if orderID != "" {
 				userStore.mu.Lock()
 				for _, u := range userStore.users {
-					if u.ID == userID {
-						u.Plan = plan
-						u.SubscriptionID = obj.Subscription
+					if u.SubscriptionID == orderID {
+						u.Plan = "pro"
 						u.MaxFreeUsage = -1
 						break
 					}
@@ -2142,4 +2127,147 @@ func stripHTML(html string) string {
 		text = strings.ReplaceAll(text, "  ", " ")
 	}
 	return strings.TrimSpace(text)
+}
+
+func getPayPalBaseURL() string {
+	mode := os.Getenv("PAYPAL_MODE")
+	if mode == "production" {
+		return "https://api-m.paypal.com"
+	}
+	return "https://api-m.sandbox.paypal.com"
+}
+
+func getPayPalAccessToken() (string, error) {
+	clientID := os.Getenv("PAYPAL_CLIENT_ID")
+	clientSecret := os.Getenv("PAYPAL_CLIENT_SECRET")
+	if clientID == "" || clientSecret == "" {
+		return "", fmt.Errorf("PayPal not configured")
+	}
+
+	creds := base64.StdEncoding.EncodeToString([]byte(clientID + ":" + clientSecret))
+	apiURL := getPayPalBaseURL() + "/v1/oauth2/token"
+
+	req, err := http.NewRequest("POST", apiURL, strings.NewReader("grant_type=client_credentials"))
+	if err != nil {
+		return "", fmt.Errorf("failed to create token request")
+	}
+	req.Header.Set("Authorization", "Basic "+creds)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to get PayPal token: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("invalid PayPal token response")
+	}
+
+	token, ok := result["access_token"].(string)
+	if !ok || token == "" {
+		return "", fmt.Errorf("no access token in PayPal response")
+	}
+	return token, nil
+}
+
+func createPayPalOrder(token, amount, currency, description, orderID, returnURL, cancelURL string) (string, error) {
+	apiURL := getPayPalBaseURL() + "/v2/checkout/orders"
+
+	orderPayload := map[string]interface{}{
+		"intent": "CAPTURE",
+		"purchase_units": []map[string]interface{}{
+			{
+				"reference_id": orderID,
+				"description":  description,
+				"amount": map[string]interface{}{
+					"currency_code": currency,
+					"value":         amount,
+				},
+			},
+		},
+		"application_context": map[string]interface{}{
+			"return_url":  returnURL,
+			"cancel_url":  cancelURL,
+			"brand_name":  "ResumeTake",
+			"landing_page": "BILLING",
+			"user_action":  "PAY_NOW",
+		},
+	}
+
+	jsonData, err := json.Marshal(orderPayload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal order")
+	}
+
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("failed to create order request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Prefer", "return=representation")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to create PayPal order: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("invalid PayPal order response")
+	}
+
+	if resp.StatusCode != 201 {
+		errMsg := "Unknown error"
+		if e, ok := result["message"].(string); ok {
+			errMsg = e
+		}
+		return "", fmt.Errorf("PayPal order creation failed: %s", errMsg)
+	}
+
+	orderIDResp, ok := result["id"].(string)
+	if !ok || orderIDResp == "" {
+		return "", fmt.Errorf("no order ID in PayPal response")
+	}
+
+	return orderIDResp, nil
+}
+
+func capturePayPalOrder(token, orderID string) (map[string]interface{}, error) {
+	apiURL := getPayPalBaseURL() + "/v2/checkout/orders/" + orderID + "/capture"
+
+	req, err := http.NewRequest("POST", apiURL, strings.NewReader("{}"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create capture request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Prefer", "return=representation")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to capture PayPal order: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("invalid PayPal capture response")
+	}
+
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		errMsg := "Unknown error"
+		if e, ok := result["message"].(string); ok {
+			errMsg = e
+		}
+		return nil, fmt.Errorf("PayPal capture failed: %s", errMsg)
+	}
+
+	return result, nil
 }

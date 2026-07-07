@@ -12,7 +12,7 @@
   let showViewButton = $state(false);
   let chatContainer = $state(null);
 
-  const generateLocked = true;
+  let generateLocked = $state(true);
   const lockedText = {
     zh: { title: '0基础生成暂未开放', desc: '这个功能会消耗更多 AI token，之后将按次付费开放。预计中国区约 ¥9.9/次。', cta: '查看付费方案' },
     en: { title: 'Resume generation is temporarily locked', desc: 'This feature uses more AI tokens and will be available as a pay-per-use feature. US pricing is planned around $1.9/use.', cta: 'View pricing' }
@@ -33,6 +33,9 @@
         ? '你好！我是你的简历生成助手。让我来帮你从零开始构建一份专业的简历。首先，请告诉我你的姓名和目标职位是什么？'
         : "Hello! I'm your resume generation assistant. Let me help you build a professional resume from scratch. First, what's your name and target position?"
     }];
+    fetch('/api/health').then(r => r.json()).then(d => {
+      generateLocked = !(d.generate_resume_enabled === true);
+    }).catch(() => {});
   });
 
   async function sendMessage() {

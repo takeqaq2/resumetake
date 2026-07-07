@@ -658,8 +658,8 @@ export const translations = {
     pricing: {
       title: '요금제',
       subtitle: '가장 적합한 플랜을 선택하세요',
-      free: '무료版',
-      pro: '프로版',
+      free: '무료',
+      pro: '프로',
       enterprise: '엔터프라이즈',
       monthly: '월',
       current: '현재 플랜',

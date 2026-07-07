@@ -8,17 +8,78 @@
   let loading = $state('');
   let error = $state('');
 
+  const pricingText = {
+    zh: {
+      choosePlan: '选择适合你的方案', checkoutError: '创建支付会话失败', networkError: '网络错误',
+      freeFeatures: ['5次AI优化/月', '基础模板', '校招信息'],
+      proFeatures: ['无限AI优化', '高级模板', '4视角分析', '0基础生成', '简历导出'],
+      enterpriseFeatures: ['API接入', '团队管理', '自定义模板']
+    },
+    en: {
+      choosePlan: 'Choose Your Plan', checkoutError: 'Failed to create checkout session', networkError: 'Network error',
+      freeFeatures: ['5 AI optimizations/month', 'Basic templates', 'Campus recruitment info'],
+      proFeatures: ['Unlimited AI optimizations', 'Premium templates', '4-perspective analysis', '0-basis resume generation', 'Resume export'],
+      enterpriseFeatures: ['API access', 'Team management', 'Custom templates']
+    },
+    ja: {
+      choosePlan: 'あなたに合うプランを選択', checkoutError: '決済セッションの作成に失敗しました', networkError: 'ネットワークエラー',
+      freeFeatures: ['月5回のAI最適化', '基本テンプレート', '求人情報'],
+      proFeatures: ['無制限AI最適化', 'プレミアムテンプレート', '4視点分析', 'ゼロから履歴書生成', '履歴書エクスポート'],
+      enterpriseFeatures: ['API連携', 'チーム管理', 'カスタムテンプレート']
+    },
+    ko: {
+      choosePlan: '나에게 맞는 플랜 선택', checkoutError: '결제 세션 생성에 실패했습니다', networkError: '네트워크 오류',
+      freeFeatures: ['월 5회 AI 최적화', '기본 템플릿', '채용 정보'],
+      proFeatures: ['무제한 AI 최적화', '프리미엄 템플릿', '4가지 관점 분석', '무경력 이력서 생성', '이력서 내보내기'],
+      enterpriseFeatures: ['API 연동', '팀 관리', '맞춤 템플릿']
+    },
+    es: {
+      choosePlan: 'Elige Tu Plan', checkoutError: 'No se pudo crear la sesión de pago', networkError: 'Error de red',
+      freeFeatures: ['5 optimizaciones IA/mes', 'Plantillas básicas', 'Información de empleo'],
+      proFeatures: ['Optimizaciones IA ilimitadas', 'Plantillas premium', 'Análisis de 4 perspectivas', 'Generación desde cero', 'Exportación de currículum'],
+      enterpriseFeatures: ['Acceso API', 'Gestión de equipo', 'Plantillas personalizadas']
+    },
+    pt: {
+      choosePlan: 'Escolha Seu Plano', checkoutError: 'Falha ao criar sessão de pagamento', networkError: 'Erro de rede',
+      freeFeatures: ['5 otimizações IA/mês', 'Modelos básicos', 'Informações de vagas'],
+      proFeatures: ['Otimizações IA ilimitadas', 'Modelos premium', 'Análise de 4 perspectivas', 'Geração do zero', 'Exportação de currículo'],
+      enterpriseFeatures: ['Acesso API', 'Gestão de equipe', 'Modelos personalizados']
+    },
+    fr: {
+      choosePlan: 'Choisissez Votre Offre', checkoutError: 'Échec de création de la session de paiement', networkError: 'Erreur réseau',
+      freeFeatures: ['5 optimisations IA/mois', 'Modèles basiques', 'Informations emploi'],
+      proFeatures: ['Optimisations IA illimitées', 'Modèles premium', 'Analyse en 4 perspectives', 'Génération depuis zéro', 'Export du CV'],
+      enterpriseFeatures: ['Accès API', 'Gestion d’équipe', 'Modèles personnalisés']
+    },
+    de: {
+      choosePlan: 'Wählen Sie Ihren Plan', checkoutError: 'Checkout-Sitzung konnte nicht erstellt werden', networkError: 'Netzwerkfehler',
+      freeFeatures: ['5 KI-Optimierungen/Monat', 'Basisvorlagen', 'Jobinformationen'],
+      proFeatures: ['Unbegrenzte KI-Optimierung', 'Premium-Vorlagen', '4-Perspektiven-Analyse', 'Lebenslauf von Grund auf', 'Lebenslauf exportieren'],
+      enterpriseFeatures: ['API-Zugriff', 'Teamverwaltung', 'Eigene Vorlagen']
+    },
+    ar: {
+      choosePlan: 'اختر الخطة المناسبة', checkoutError: 'فشل إنشاء جلسة الدفع', networkError: 'خطأ في الشبكة',
+      freeFeatures: ['5 تحسينات بالذكاء الاصطناعي/شهر', 'قوالب أساسية', 'معلومات وظائف'],
+      proFeatures: ['تحسينات غير محدودة', 'قوالب مميزة', 'تحليل من 4 زوايا', 'إنشاء سيرة من الصفر', 'تصدير السيرة الذاتية'],
+      enterpriseFeatures: ['وصول API', 'إدارة الفريق', 'قوالب مخصصة']
+    },
+    hi: {
+      choosePlan: 'अपना प्लान चुनें', checkoutError: 'चेकआउट सत्र बनाने में विफल', networkError: 'नेटवर्क त्रुटि',
+      freeFeatures: ['5 AI अनुकूलन/माह', 'बेसिक टेम्पलेट', 'नौकरी जानकारी'],
+      proFeatures: ['असीमित AI अनुकूलन', 'प्रीमियम टेम्पलेट', '4-दृष्टिकोण विश्लेषण', 'शून्य से रिज़्यूमे निर्माण', 'रिज़्यूमे निर्यात'],
+      enterpriseFeatures: ['API एक्सेस', 'टीम प्रबंधन', 'कस्टम टेम्पलेट']
+    }
+  };
+
+  let pt = $derived(pricingText[lang] || pricingText.en);
+
   let plans = $derived([
     {
       id: 'free',
       name: t.pricing.free,
       price: '0',
       period: '',
-      features: [
-        lang === 'zh' ? '5次AI优化/月' : '5 AI optimizations/month',
-        lang === 'zh' ? '基础模板' : 'Basic templates',
-        lang === 'zh' ? '校招信息' : 'Campus recruitment info'
-      ],
+      features: pt.freeFeatures,
       cta: t.pricing.current,
       highlighted: false,
       disabled: true
@@ -28,13 +89,7 @@
       name: t.pricing.pro,
       price: '¥29',
       period: t.pricing.monthly,
-      features: [
-        lang === 'zh' ? '无限AI优化' : 'Unlimited AI optimizations',
-        lang === 'zh' ? '高级模板' : 'Premium templates',
-        lang === 'zh' ? '4视角分析' : '4-perspective analysis',
-        lang === 'zh' ? '0基础生成' : '0-basis resume generation',
-        lang === 'zh' ? '简历导出' : 'Resume export'
-      ],
+      features: pt.proFeatures,
       cta: t.pricing.upgrade,
       highlighted: true,
       disabled: false
@@ -44,11 +99,7 @@
       name: t.pricing.enterprise,
       price: '¥99',
       period: t.pricing.monthly,
-      features: [
-        lang === 'zh' ? 'API接入' : 'API access',
-        lang === 'zh' ? '团队管理' : 'Team management',
-        lang === 'zh' ? '自定义模板' : 'Custom templates'
-      ],
+      features: pt.enterpriseFeatures,
       cta: t.pricing.upgrade,
       highlighted: false,
       disabled: false
@@ -73,10 +124,10 @@
       if (data.url) {
         window.location.href = data.url;
       } else {
-        error = data.message || 'Failed to create checkout session';
+        error = data.message || pt.checkoutError;
       }
     } catch {
-      error = lang === 'zh' ? '网络错误' : 'Network error';
+      error = pt.networkError;
     } finally {
       loading = '';
     }
@@ -94,7 +145,7 @@
     <div class="container" style="position:relative;text-align:center">
       <span class="section-badge">💎 {t.pricing.title}</span>
       <h1 style="font-size:clamp(1.75rem,4vw,2.5rem);font-weight:800;margin:1rem 0 0.75rem">
-        {lang === 'zh' ? '选择适合你的方案' : 'Choose Your Plan'}
+        {pt.choosePlan}
       </h1>
       <p style="color:var(--text-secondary);font-size:1rem;max-width:32rem;margin:0 auto">{t.pricing.subtitle}</p>
     </div>

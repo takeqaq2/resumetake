@@ -56,6 +56,17 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type persistedUser struct {
+	ID           string    `json:"id"`
+	Email        string    `json:"email"`
+	Password     string    `json:"password"`
+	Name         string    `json:"name"`
+	Token        string    `json:"token"`
+	UsageCount   int       `json:"usage_count"`
+	MaxFreeUsage int       `json:"max_free_usage"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 type UserStore struct {
 	mu    sync.RWMutex
 	users map[string]*User // keyed by email
@@ -88,6 +99,12 @@ func (us *UserStore) GetByToken(token string) (*User, bool) {
 	return nil, false
 }
 
+func (us *UserStore) Count() int {
+	us.mu.RLock()
+	defer us.mu.RUnlock()
+	return len(us.users)
+}
+
 func (us *UserStore) Save(user *User) {
 	us.mu.Lock()
 	us.users[user.Email] = user
@@ -103,12 +120,25 @@ func (us *UserStore) Load(path string) error {
 		}
 		return err
 	}
-	loaded := make(map[string]*User)
+	loaded := make(map[string]*persistedUser)
 	if err := json.Unmarshal(b, &loaded); err != nil {
 		return err
 	}
+	users := make(map[string]*User, len(loaded))
+	for email, user := range loaded {
+		users[email] = &User{
+			ID:           user.ID,
+			Email:        user.Email,
+			Password:     user.Password,
+			Name:         user.Name,
+			Token:        user.Token,
+			UsageCount:   user.UsageCount,
+			MaxFreeUsage: user.MaxFreeUsage,
+			CreatedAt:    user.CreatedAt,
+		}
+	}
 	us.mu.Lock()
-	us.users = loaded
+	us.users = users
 	if us.users == nil {
 		us.users = make(map[string]*User)
 	}
@@ -118,10 +148,18 @@ func (us *UserStore) Load(path string) error {
 
 func (us *UserStore) Persist(path string) error {
 	us.mu.RLock()
-	snapshot := make(map[string]*User, len(us.users))
+	snapshot := make(map[string]*persistedUser, len(us.users))
 	for email, user := range us.users {
-		copyUser := *user
-		snapshot[email] = &copyUser
+		snapshot[email] = &persistedUser{
+			ID:           user.ID,
+			Email:        user.Email,
+			Password:     user.Password,
+			Name:         user.Name,
+			Token:        user.Token,
+			UsageCount:   user.UsageCount,
+			MaxFreeUsage: user.MaxFreeUsage,
+			CreatedAt:    user.CreatedAt,
+		}
 	}
 	us.mu.RUnlock()
 
@@ -1058,14 +1096,16 @@ func main() {
 			providerNames[i] = p.Name
 		}
 		return c.JSON(fiber.Map{
-			"status":    "healthy",
-			"timestamp": time.Now().Format(time.RFC3339),
-			"uptime":    time.Since(startTime).String(),
-			"requests":  store.Count(),
-			"total":     atomic.LoadInt64(&totalRequests),
-			"version":   "2.0.0",
-			"ai":        providerNames,
-			"memory":    fmt.Sprintf("%d MB", getMemUsage()),
+			"status":           "healthy",
+			"timestamp":        time.Now().Format(time.RFC3339),
+			"uptime":           time.Since(startTime).String(),
+			"requests":         store.Count(),
+			"total":            atomic.LoadInt64(&totalRequests),
+			"version":          "2.0.0",
+			"ai":               providerNames,
+			"memory":           fmt.Sprintf("%d MB", getMemUsage()),
+			"users":            userStore.Count(),
+			"user_persistence": userDataPath != "",
 		})
 	})
 

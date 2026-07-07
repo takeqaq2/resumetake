@@ -1158,7 +1158,7 @@ func main() {
 		return c.Status(404).JSON(fiber.Map{"error": "NOT_FOUND", "message": "Resume not found"})
 	})
 
-	v1.Post("/upload", func(c *fiber.Ctx) error {
+	v1.Post("/upload", authRequired, func(c *fiber.Ctx) error {
 		file, err := c.FormFile("file")
 		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "NO_FILE", "message": "No file uploaded"})
@@ -1178,8 +1178,9 @@ func main() {
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_TYPE", "message": "Only .txt and .md files are supported for safe text parsing"})
 		}
 		contentType := strings.ToLower(file.Header.Get("Content-Type"))
-		if contentType != "" && !strings.HasPrefix(contentType, "text/plain") && contentType != "application/octet-stream" {
-			return c.Status(400).JSON(fiber.Map{"error": "INVALID_MIME", "message": "Only plain text files are supported"})
+		allowedMime := strings.HasPrefix(contentType, "text/plain") || contentType == "text/markdown" || contentType == "application/octet-stream"
+		if contentType != "" && !allowedMime {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_MIME", "message": "Only plain text and markdown files are supported"})
 		}
 		f, err := file.Open()
 		if err != nil {

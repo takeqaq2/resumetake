@@ -5,6 +5,9 @@
   let lang = $derived($page.params.lang);
   let t = $derived(getTranslation(lang));
 
+  let loading = $state('');
+  let error = $state('');
+
   let plans = $derived([
     {
       id: 'free',
@@ -51,6 +54,33 @@
       disabled: false
     }
   ]);
+
+  async function handleUpgrade(planId) {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = `/${lang}/auth`;
+      return;
+    }
+    loading = planId;
+    error = '';
+    try {
+      const res = await fetch('/api/v1/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ plan: planId })
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        error = data.message || 'Failed to create checkout session';
+      }
+    } catch {
+      error = lang === 'zh' ? '网络错误' : 'Network error';
+    } finally {
+      loading = '';
+    }
+  }
 </script>
 
 <svelte:head>
@@ -71,6 +101,9 @@
   </div>
 
   <div class="container" style="padding:3rem 1.5rem;margin-top:-2rem">
+    {#if error}
+      <div style="max-width:24rem;margin:0 auto 1.5rem;padding:0.75rem 1rem;border-radius:var(--radius);background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#ef4444;font-size:0.875rem;text-align:center">{error}</div>
+    {/if}
     <div class="pricing-grid">
       {#each plans as plan}
         <div class="pricing-card {plan.highlighted ? 'highlighted' : ''}">
@@ -94,8 +127,12 @@
               </li>
             {/each}
           </ul>
-          <button class="btn {plan.highlighted ? 'btn-primary' : 'btn-secondary'} plan-cta" disabled={plan.disabled}>
-            {plan.cta}
+          <button class="btn {plan.highlighted ? 'btn-primary' : 'btn-secondary'} plan-cta" disabled={plan.disabled || loading === plan.id} onclick={() => handleUpgrade(plan.id)}>
+            {#if loading === plan.id}
+              <span class="auth-spinner"></span>
+            {:else}
+              {plan.cta}
+            {/if}
           </button>
         </div>
       {/each}
@@ -167,6 +204,12 @@
   }
   .plan-features svg { color: #10b981; flex-shrink: 0; }
   .plan-cta { width: 100%; padding: 0.875rem; font-weight: 600; }
+  :global(.auth-spinner) {
+    width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white; border-radius: 50%;
+    animation: spin 0.6s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   @media (max-width: 768px) {
     .pricing-grid { grid-template-columns: 1fr; max-width: 24rem; margin: 0 auto; }
     .pricing-card.highlighted { transform: none; }

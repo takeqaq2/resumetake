@@ -1634,6 +1634,56 @@ Communicate with the user in English.`,
 		return c.JSON(fiber.Map{"success": true, "data": tiers})
 	})
 
+	v1.Post("/create-checkout-session", authMiddleware, func(c *fiber.Ctx) error {
+		stripeKey := os.Getenv("STRIPE_SECRET_KEY")
+		if stripeKey == "" {
+			return c.Status(503).JSON(fiber.Map{"error": "PAYMENT_NOT_CONFIGURED", "message": "Payment system not configured"})
+		}
+		var body struct {
+			Plan string `json:"plan"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
+		}
+		user := c.Locals("user").(*User)
+		priceMap := map[string]string{
+			"pro":        "price_pro_monthly_29",
+			"enterprise": "price_enterprise_monthly_99",
+		}
+		priceID, ok := priceMap[body.Plan]
+		if !ok {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_PLAN", "message": "Invalid plan"})
+		}
+		payload := fmt.Sprintf(`{
+			"mode": "subscription",
+			"payment_method_types": ["card", "alipay", "wechat_pay"],
+			"customer_email": "%s",
+			"line_items": [{"price": "%s", "quantity": 1}],
+			"success_url": "https://resume.takee.top/%s/pricing?session_id={CHECKOUT_SESSION_ID}",
+			"cancel_url": "https://resume.takee.top/%s/pricing",
+			"metadata": {"user_id": "%s", "plan": "%s"}
+		}`, user.Email, priceID, "en", "en", user.ID, body.Plan)
+		req, err := http.NewRequest("POST", "https://api.stripe.com/v1/checkout/sessions", strings.NewReader(payload))
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "INTERNAL", "message": "Failed to create checkout session"})
+		}
+		req.Header.Set("Authorization", "Bearer "+stripeKey)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return c.Status(502).JSON(fiber.Map{"error": "STRIPE_ERROR", "message": "Failed to connect to Stripe"})
+		}
+		defer resp.Body.Close()
+		var result map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "INTERNAL", "message": "Invalid Stripe response"})
+		}
+		if resp.StatusCode != 200 {
+			return c.Status(502).JSON(fiber.Map{"error": "STRIPE_ERROR", "message": result["error"]})
+		}
+		return c.JSON(fiber.Map{"success": true, "url": result["url"]})
+	})
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 

@@ -108,6 +108,29 @@ func authMiddleware(c *fiber.Ctx) error {
 	return c.Next()
 }
 
+type loginAuth struct {
+	username, password string
+}
+
+func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	return "LOGIN", nil, nil
+}
+
+func (a *loginAuth) Continue(fromServer []byte) ([]byte, error) {
+	switch string(fromServer) {
+	case "Username:":
+		return []byte(a.username), nil
+	case "Password:":
+		return []byte(a.password), nil
+	default:
+		return nil, fmt.Errorf("unexpected server challenge: %s", fromServer)
+	}
+}
+
+func loginAuthFunc(username, password string) smtp.Auth {
+	return &loginAuth{username: username, password: password}
+}
+
 type VerificationCode struct {
 	Code      string
 	CreatedAt time.Time
@@ -175,7 +198,7 @@ func sendVerificationEmail(toEmail, code string) error {
 	msg := []byte(subject + contentType + body)
 
 	addr := smtpHost + ":" + smtpPort
-	auth := smtp.PlainAuth("", smtpUser, smtpPass, smtpHost)
+	auth := loginAuthFunc(smtpUser, smtpPass)
 
 	tlsconfig := &tls.Config{ServerName: smtpHost}
 	conn, err := tls.Dial("tcp", addr, tlsconfig)
@@ -1271,15 +1294,12 @@ func main() {
 	})
 
 	v1.Post("/auth/send-code", func(c *fiber.Ctx) error {
-		fmt.Printf("[DEBUG] send-code: Content-Type: %s, Body: %s\n", c.Get("Content-Type"), string(c.Body()))
 		var body struct {
 			Email string `json:"email"`
 		}
 		if err := c.BodyParser(&body); err != nil {
-			fmt.Printf("[DEBUG] BodyParser error: %v\n", err)
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
 		}
-		fmt.Printf("[DEBUG] Parsed email: %s\n", body.Email)
 		body.Email = strings.TrimSpace(strings.ToLower(body.Email))
 		if !emailRegex.MatchString(body.Email) {
 			return c.Status(400).JSON(fiber.Map{"error": "VALIDATION_ERROR", "message": "Invalid email format"})

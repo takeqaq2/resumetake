@@ -788,10 +788,13 @@ func callAI(resumeContent, targetJob, jobDescription, lang, moduleHints string) 
 
 	var lastErr error
 	for _, p := range providers {
+		fmt.Printf("[AI] Trying provider: %s (model: %s)\n", p.Name, p.Model)
 		result, err := callAIWithProvider(p, userMsg, lang)
 		if err == nil {
+			fmt.Printf("[AI] Success with provider: %s\n", p.Name)
 			return result, nil
 		}
+		fmt.Printf("[AI] Provider %s failed: %s\n", p.Name, err.Error())
 		lastErr = err
 	}
 
@@ -1079,6 +1082,7 @@ func main() {
 
 		result, err := callAI(resumeContent, targetJob, jobDesc, lang, moduleHints)
 		if err != nil {
+			fmt.Printf("[OPTIMIZE] Error: %s\n", err.Error())
 			return c.Status(503).JSON(fiber.Map{
 				"success": false,
 				"error":   "Service temporarily unavailable, please try again later",

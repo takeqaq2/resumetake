@@ -1936,35 +1936,58 @@ Communicate with the user in English.`,
 		}
 		var body struct {
 			Plan string `json:"plan"`
+			Lang string `json:"lang"`
 		}
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
 		}
-		user := c.Locals("user").(*User)
-		priceMap := map[string]string{
-			"pro":        "price_pro_monthly_29",
-			"enterprise": "price_enterprise_monthly_99",
+		if body.Lang == "" {
+			body.Lang = "en"
 		}
-		priceID, ok := priceMap[body.Plan]
+		user := c.Locals("user").(*User)
+		priceAmounts := map[string]int{
+			"pro":        990,
+			"enterprise": 4990,
+		}
+		priceNames := map[string]string{
+			"pro":        "ResumeTake Pro",
+			"enterprise": "ResumeTake Enterprise",
+		}
+		amount, ok := priceAmounts[body.Plan]
 		if !ok {
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_PLAN", "message": "Invalid plan"})
 		}
-		payload := fmt.Sprintf(`{
-			"mode": "subscription",
-			"payment_method_types": ["card", "alipay", "wechat_pay"],
-			"customer_email": "%s",
-			"line_items": [{"price": "%s", "quantity": 1}],
-			"success_url": "https://resume.takee.top/%s/pricing?session_id={CHECKOUT_SESSION_ID}",
-			"cancel_url": "https://resume.takee.top/%s/pricing",
-			"metadata": {"user_id": "%s", "plan": "%s"}
-		}`, user.Email, priceID, "en", "en", user.ID, body.Plan)
-		req, err := http.NewRequest("POST", "https://api.stripe.com/v1/checkout/sessions", strings.NewReader(payload))
+		payload := map[string]interface{}{
+			"mode": "payment",
+			"payment_method_types": []string{"card", "alipay", "wechat_pay"},
+			"customer_email":       user.Email,
+			"line_items": []map[string]interface{}{
+				{
+					"price_data": map[string]interface{}{
+						"currency": "usd",
+						"product_data": map[string]interface{}{
+							"name": priceNames[body.Plan],
+						},
+						"unit_amount": amount,
+					},
+					"quantity": 1,
+				},
+			},
+			"success_url": "https://resume.takee.top/" + body.Lang + "/pricing?session_id={CHECKOUT_SESSION_ID}",
+			"cancel_url":  "https://resume.takee.top/" + body.Lang + "/pricing",
+			"metadata": map[string]string{
+				"user_id": user.ID,
+				"plan":    body.Plan,
+			},
+		}
+		payloadBytes, _ := json.Marshal(payload)
+		req, err := http.NewRequest("POST", "https://api.stripe.com/v1/checkout/sessions", bytes.NewReader(payloadBytes))
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "INTERNAL", "message": "Failed to create checkout session"})
 		}
 		req.Header.Set("Authorization", "Bearer "+stripeKey)
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		resp, err := http.DefaultClient.Do(req)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			return c.Status(502).JSON(fiber.Map{"error": "STRIPE_ERROR", "message": "Failed to connect to Stripe"})
 		}
@@ -1974,7 +1997,13 @@ Communicate with the user in English.`,
 			return c.Status(500).JSON(fiber.Map{"error": "INTERNAL", "message": "Invalid Stripe response"})
 		}
 		if resp.StatusCode != 200 {
-			return c.Status(502).JSON(fiber.Map{"error": "STRIPE_ERROR", "message": result["error"]})
+			errMsg := "Unknown error"
+			if e, ok := result["error"].(map[string]interface{}); ok {
+				if msg, ok := e["message"].(string); ok {
+					errMsg = msg
+				}
+			}
+			return c.Status(502).JSON(fiber.Map{"error": "STRIPE_ERROR", "message": errMsg})
 		}
 		return c.JSON(fiber.Map{"success": true, "url": result["url"]})
 	})

@@ -37,6 +37,7 @@ services:
       - SMTP_FROM=${SMTP_FROM:-}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - ENABLE_GENERATE_RESUME=${ENABLE_GENERATE_RESUME:-false}
       - USER_DATA_FILE=/app/data/users.json
     volumes:
       - backend-data:/app/data

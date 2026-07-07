@@ -1158,7 +1158,7 @@ func main() {
 		return c.Status(404).JSON(fiber.Map{"error": "NOT_FOUND", "message": "Resume not found"})
 	})
 
-	v1.Post("/upload", authRequired, func(c *fiber.Ctx) error {
+	v1.Post("/upload", authMiddleware, func(c *fiber.Ctx) error {
 		file, err := c.FormFile("file")
 		if err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "NO_FILE", "message": "No file uploaded"})

@@ -11,6 +11,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -1957,36 +1958,31 @@ Communicate with the user in English.`,
 		if !ok {
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_PLAN", "message": "Invalid plan"})
 		}
-		payload := map[string]interface{}{
-			"mode": "payment",
-			"payment_method_types": []string{"card", "alipay", "wechat_pay"},
-			"customer_email":       user.Email,
-			"line_items": []map[string]interface{}{
-				{
-					"price_data": map[string]interface{}{
-						"currency": "usd",
-						"product_data": map[string]interface{}{
-							"name": priceNames[body.Plan],
-						},
-						"unit_amount": amount,
-					},
-					"quantity": 1,
-				},
-			},
-			"success_url": "https://resume.takee.top/" + body.Lang + "/pricing?session_id={CHECKOUT_SESSION_ID}",
-			"cancel_url":  "https://resume.takee.top/" + body.Lang + "/pricing",
-			"metadata": map[string]string{
-				"user_id": user.ID,
-				"plan":    body.Plan,
-			},
-		}
-		payloadBytes, _ := json.Marshal(payload)
-		req, err := http.NewRequest("POST", "https://api.stripe.com/v1/checkout/sessions", bytes.NewReader(payloadBytes))
+		formBody := fmt.Sprintf(
+			"mode=payment&payment_method_types[]=card&payment_method_types[]=alipay&payment_method_types[]=wechat_pay"+
+				"&customer_email=%s"+
+				"&line_items[0][price_data][currency]=usd"+
+				"&line_items[0][price_data][product_data][name]=%s"+
+				"&line_items[0][price_data][unit_amount]=%d"+
+				"&line_items[0][quantity]=1"+
+				"&success_url=%s"+
+				"&cancel_url=%s"+
+				"&metadata[user_id]=%s"+
+				"&metadata[plan]=%s",
+			url.QueryEscape(user.Email),
+			url.QueryEscape(priceNames[body.Plan]),
+			amount,
+			url.QueryEscape("https://resume.takee.top/"+body.Lang+"/pricing?session_id={CHECKOUT_SESSION_ID}"),
+			url.QueryEscape("https://resume.takee.top/"+body.Lang+"/pricing"),
+			user.ID,
+			body.Plan,
+		)
+		req, err := http.NewRequest("POST", "https://api.stripe.com/v1/checkout/sessions", strings.NewReader(formBody))
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "INTERNAL", "message": "Failed to create checkout session"})
 		}
 		req.Header.Set("Authorization", "Bearer "+stripeKey)
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		resp, err := httpClient.Do(req)
 		if err != nil {
 			return c.Status(502).JSON(fiber.Map{"error": "STRIPE_ERROR", "message": "Failed to connect to Stripe"})

@@ -110,8 +110,8 @@
           body: JSON.stringify({ email, password })
         });
         const data = await res.json();
-        if (data.success && data.token) {
-          localStorage.setItem('token', data.token);
+        if (data.success && data.data && data.data.token) {
+          localStorage.setItem('token', data.data.token);
           goto(`/${lang}/editor`);
         } else {
           error = data.message || 'Login failed';

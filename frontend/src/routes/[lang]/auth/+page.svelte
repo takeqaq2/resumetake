@@ -184,9 +184,9 @@
           </div>
         {:else if regStep === 1}
           <div class="form-group">
-            <label class="label">{lang === 'zh' ? '验证码已发送至' : 'Code sent to'} {email}</label>
+            <label class="label" for="verify-code">{lang === 'zh' ? '验证码已发送至' : 'Code sent to'} {email}</label>
             <div style="display:flex;gap:0.5rem">
-              <input class="input" type="text" bind:value={verifyCode} maxlength="6" placeholder="000000" style="flex:1;letter-spacing:4px;text-align:center;font-size:1.25rem">
+              <input id="verify-code" class="input" type="text" bind:value={verifyCode} maxlength="6" placeholder="000000" style="flex:1;letter-spacing:4px;text-align:center;font-size:1.25rem">
               <button type="button" class="btn btn-secondary" onclick={sendCode} disabled={countdown > 0 || sendingCode} style="white-space:nowrap;font-size:0.8125rem">
                 {countdown > 0 ? `${countdown}s` : (lang === 'zh' ? '重新发送' : 'Resend')}
               </button>

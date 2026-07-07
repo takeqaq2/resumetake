@@ -87,7 +87,7 @@
   {:else}
     <div class="jobs-grid">
       {#each filteredJobs as job (job.id || job.title)}
-        <div class="job-card card {expandedId === job.id ? 'expanded' : ''}" onclick={() => toggleExpand(job.id)}>
+        <div class="job-card card {expandedId === job.id ? 'expanded' : ''}" role="button" tabindex="0" onclick={() => toggleExpand(job.id)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleExpand(job.id); }}>
           <div class="job-card-header">
             <div>
               <h3 class="job-title">{job.title}</h3>

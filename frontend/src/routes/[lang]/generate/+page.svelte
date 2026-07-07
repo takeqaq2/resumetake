@@ -126,7 +126,7 @@
         onkeydown={handleKeydown}
         rows="1"
       ></textarea>
-      <button class="send-btn" onclick={sendMessage} disabled={!inputText.trim() || isTyping}>
+      <button class="send-btn" onclick={sendMessage} disabled={!inputText.trim() || isTyping} aria-label={lang === 'zh' ? '发送' : 'Send'}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>

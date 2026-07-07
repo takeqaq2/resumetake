@@ -303,7 +303,7 @@ type GroqResponse struct {
 }
 
 var httpClient = &http.Client{
-	Timeout: 30 * time.Second,
+	Timeout: 60 * time.Second,
 	Transport: &http.Transport{
 		MaxIdleConns:        10,
 		MaxIdleConnsPerHost: 5,
@@ -759,6 +759,7 @@ func callAIWithProvider(provider AIProvider, userMsg, lang string) (map[string]i
 
 	var result map[string]interface{}
 	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		fmt.Printf("[AI] %s parse failed, raw content: %s\n", provider.Name, content[:min(len(content), 300)])
 		return nil, fmt.Errorf("failed to parse %s result", provider.Name)
 	}
 	return result, nil

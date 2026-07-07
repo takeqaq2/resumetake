@@ -1040,6 +1040,10 @@ func main() {
 		port = "8000"
 	}
 	startTime = time.Now()
+	userDataPath = getUserDataPath()
+	if err := userStore.Load(userDataPath); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load users: %v\n", err)
+	}
 
 	app := fiber.New(fiber.Config{
 		AppName:       "ResumeTake API v2.0",

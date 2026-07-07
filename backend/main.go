@@ -117,10 +117,11 @@ func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 }
 
 func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
-	switch string(fromServer) {
-	case "Username:":
+	challenge := strings.TrimRight(strings.ToLower(string(fromServer)), ": ")
+	switch challenge {
+	case "username":
 		return []byte(a.username), nil
-	case "Password:":
+	case "password":
 		return []byte(a.password), nil
 	default:
 		return nil, fmt.Errorf("unexpected server challenge: %s", fromServer)

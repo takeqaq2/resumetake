@@ -116,7 +116,7 @@ func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 	return "LOGIN", nil, nil
 }
 
-func (a *loginAuth) Continue(fromServer []byte) ([]byte, error) {
+func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 	switch string(fromServer) {
 	case "Username:":
 		return []byte(a.username), nil

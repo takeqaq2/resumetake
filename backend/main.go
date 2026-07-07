@@ -1320,6 +1320,9 @@ func main() {
 			lang = "en"
 		}
 		targetJob, _ := body["target_job"].(string)
+		if targetJob == "" {
+			targetJob, _ = body["target_position"].(string)
+		}
 		jobDesc, _ := body["job_description"].(string)
 		if len(targetJob) > 500 {
 			targetJob = targetJob[:500]
@@ -1330,6 +1333,8 @@ func main() {
 
 		var resumeContent string
 		if rc, ok := body["resume_text"].(string); ok && rc != "" {
+			resumeContent = rc
+		} else if rc, ok := body["resume"].(string); ok && rc != "" {
 			resumeContent = rc
 		} else if rc, _ := json.Marshal(body["resume_content"]); rc != nil && string(rc) != "null" {
 			resumeContent = string(rc)

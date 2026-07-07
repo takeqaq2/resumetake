@@ -308,7 +308,9 @@ var httpClient = &http.Client{
 		MaxIdleConns:        10,
 		MaxIdleConnsPerHost: 5,
 		IdleConnTimeout:     90 * time.Second,
-		TLSHandshakeTimeout: 10 * time.Second,
+		TLSHandshakeTimeout: 15 * time.Second,
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+		ForceAttemptHTTP2:   false,
 	},
 }
 
@@ -719,6 +721,7 @@ func callAIWithProvider(provider AIProvider, userMsg, lang string) (map[string]i
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+provider.APIKey)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; ResumeTake/2.0)")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {

@@ -1102,7 +1102,7 @@ func main() {
 		return c.JSON(fiber.Map{"success": true, "data": result})
 	})
 
-	v1.Post("/perspective", limiter.New(limiter.Config{
+	v1.Post("/perspective", authMiddleware, limiter.New(limiter.Config{
 		Max:        10,
 		Expiration: time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {
@@ -1474,7 +1474,7 @@ func main() {
 		}})
 	})
 
-	v1.Post("/generate-resume", limiter.New(limiter.Config{
+	v1.Post("/generate-resume", authMiddleware, limiter.New(limiter.Config{
 		Max:        10,
 		Expiration: time.Minute,
 		KeyGenerator: func(c *fiber.Ctx) string {

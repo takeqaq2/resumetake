@@ -1959,7 +1959,7 @@ Communicate with the user in English.`,
 			return c.Status(400).JSON(fiber.Map{"error": "INVALID_PLAN", "message": "Invalid plan"})
 		}
 		formBody := fmt.Sprintf(
-			"mode=payment&payment_method_types[]=card&payment_method_types[]=alipay&payment_method_types[]=wechat_pay"+
+			"mode=payment&payment_method_types[]=card"+
 				"&customer_email=%s"+
 				"&line_items[0][price_data][currency]=usd"+
 				"&line_items[0][price_data][product_data][name]=%s"+

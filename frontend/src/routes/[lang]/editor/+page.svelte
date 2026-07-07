@@ -102,13 +102,18 @@
       error = lang === 'zh' ? '请至少选择一个优化模块' : lang === 'ja' ? '最適化モジュールを1つ以上選択してください' : lang === 'ko' ? '최적화 모듈을 하나 이상 선택하세요' : 'Please select at least one optimization module';
       return;
     }
+    const token = localStorage.getItem('token');
+    if (!token) {
+      error = lang === 'zh' ? '请先登录后再使用AI优化' : lang === 'ja' ? 'まずログインしてください' : lang === 'ko' ? '로그인 후 사용하세요' : 'Please login first to use AI optimization';
+      return;
+    }
     error = '';
     isOptimizing = true;
     startTime = Date.now();
     try {
       const res = await fetch('/api/v1/optimize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
         body: JSON.stringify({
           resume_text: resumeText,
           target_job: targetJob,
@@ -121,7 +126,11 @@
       if (data.success && data.data) {
         result = data.data;
       } else {
-        error = data.error || (lang === 'zh' ? '优化失败，请重试' : lang === 'ja' ? '最適化に失敗しました、再試行してください' : lang === 'ko' ? '최적화 실패, 다시 시도하세요' : 'Optimization failed, please try again');
+        if (res.status === 401 || res.status === 403) {
+          error = lang === 'zh' ? '请先登录后再使用AI优化' : 'Please login first to use AI optimization';
+        } else {
+          error = data.error || (lang === 'zh' ? '优化失败，请重试' : lang === 'ja' ? '最適化に失敗しました、再試行してください' : lang === 'ko' ? '최적화 실패, 다시 시도하세요' : 'Optimization failed, please try again');
+        }
       }
     } catch {
       error = lang === 'zh' ? '网络错误，请重试' : lang === 'ja' ? 'ネットワークエラー、再試行してください' : lang === 'ko' ? '네트워크 오류, 다시 시도하세요' : 'Network error, please try again';
@@ -135,20 +144,29 @@
       perspectiveError = t.editor.pasteFirst;
       return;
     }
+    const token = localStorage.getItem('token');
+    if (!token) {
+      perspectiveError = lang === 'zh' ? '请先登录' : 'Please login first';
+      return;
+    }
     perspectiveError = '';
     perspectiveLoading = true;
     showPerspective = true;
     try {
       const res = await fetch('/api/v1/perspective', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resume_text: resumeText, target_job: targetJob, lang })
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ resume_text: resumeText, target_job: targetJob, job_description: jobDesc, lang })
       });
       const data = await res.json();
       if (data.success && data.data) {
         perspectiveResult = data.data;
       } else {
-        perspectiveError = data.error || (lang === 'zh' ? '分析失败，请重试' : 'Analysis failed, please try again');
+        if (res.status === 401 || res.status === 403) {
+          perspectiveError = lang === 'zh' ? '请先登录' : 'Please login first';
+        } else {
+          perspectiveError = data.error || (lang === 'zh' ? '分析失败，请重试' : 'Analysis failed, please try again');
+        }
       }
     } catch {
       perspectiveError = lang === 'zh' ? '网络错误' : 'Network error';

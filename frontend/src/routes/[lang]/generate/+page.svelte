@@ -85,7 +85,16 @@
         <p style="color:var(--text-secondary);font-size:0.875rem">{t.generate.subtitle}</p>
       </div>
       {#if showViewButton}
-        <a href="/{lang}/editor" class="btn btn-primary" style="white-space:nowrap">
+        <a href="/{lang}/editor" class="btn btn-primary" style="white-space:nowrap"
+          onclick={() => {
+            const lastAi = [...messages].reverse().find(m => m.role === 'ai');
+            if (lastAi?.content) {
+              try {
+                const parsed = JSON.parse(lastAi.content);
+                if (parsed.resume) localStorage.setItem('generated_resume', JSON.stringify(parsed.resume));
+              } catch {}
+            }
+          }}>
           {lang === 'zh' ? '查看优化简历' : 'View Optimized Resume'} →
         </a>
       {/if}

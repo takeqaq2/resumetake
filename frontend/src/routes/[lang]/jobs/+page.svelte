@@ -30,7 +30,7 @@
       if (data.success && data.data) {
         jobs = data.data;
       } else {
-        jobs = [];
+        error = data.error || data.message || (lang === 'zh' ? '加载职位失败' : 'Failed to load jobs');
       }
     } catch {
       error = lang === 'zh' ? '加载职位失败' : 'Failed to load jobs';

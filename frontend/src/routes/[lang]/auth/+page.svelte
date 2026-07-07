@@ -26,7 +26,7 @@
   });
 
   async function sendCode() {
-    if (!email || countdown > 0) return;
+    if (!email || countdown > 0) return false;
     sendingCode = true;
     error = '';
     try {
@@ -42,11 +42,14 @@
           countdown--;
           if (countdown <= 0) clearInterval(timer);
         }, 1000);
+        return true;
       } else {
         error = data.message || 'Failed to send code';
+        return false;
       }
     } catch {
       error = lang === 'zh' ? '网络错误' : 'Network error';
+      return false;
     } finally {
       sendingCode = false;
     }
@@ -124,8 +127,10 @@
     } else {
       if (regStep === 0) {
         if (!email) { error = lang === 'zh' ? '请输入邮箱' : 'Please enter email'; return; }
-        await sendCode();
-        regStep = 1;
+        loading = true;
+        const sent = await sendCode();
+        loading = false;
+        if (sent) regStep = 1;
       } else if (regStep === 1) {
         await handleVerifyCode();
       } else if (regStep === 2) {

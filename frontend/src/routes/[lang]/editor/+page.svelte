@@ -76,6 +76,26 @@
           }
         }).catch(() => {});
     }
+    const generated = localStorage.getItem('generated_resume');
+    if (generated) {
+      try {
+        const r = JSON.parse(generated);
+        let text = '';
+        if (r.name) text += r.name + '\n';
+        if (r.title) text += r.title + '\n';
+        if (r.contact?.email) text += r.contact.email + '\n';
+        if (r.summary) text += '\n' + r.summary + '\n';
+        if (r.experience?.length) {
+          r.experience.forEach(e => {
+            text += `\n${e.position || e.title || ''} @ ${e.company || e.org || ''} (${e.duration || ''})\n`;
+            (e.highlights || []).forEach(h => text += `- ${h}\n`);
+          });
+        }
+        if (r.skills?.length) text += `\nSkills: ${r.skills.join(', ')}\n`;
+        resumeText = text;
+        localStorage.removeItem('generated_resume');
+      } catch {}
+    }
   });
 
   async function uploadFile(file) {
@@ -256,10 +276,6 @@
 
     if (fetchBtn) {
       fetchBtn.addEventListener('click', () => fetchJobUrl());
-    }
-
-    if (optimizeBtn) {
-      optimizeBtn.addEventListener('click', () => optimize());
     }
 
     if (toggleBtn) {
@@ -499,6 +515,17 @@
                           <span class="keyword-tag">{skill}</span>
                         {/each}
                       </div>
+                    </div>
+                  {/if}
+                  {#if result.optimized_content.education?.length}
+                    <div>
+                      <h5 style="font-size:0.8125rem;font-weight:600;color:var(--primary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.375rem">{lang === 'zh' ? '教育背景' : lang === 'ja' ? '学歴' : lang === 'ko' ? '학력' : 'Education'}</h5>
+                      {#each result.optimized_content.education as edu}
+                        <div style="padding:0.5rem 0;font-size:0.875rem;color:var(--text)">
+                          <p style="font-weight:600">{edu.degree || edu.title}{edu.major ? `, ${edu.major}` : ''}</p>
+                          <p style="color:var(--text-secondary);font-size:0.8125rem">{edu.school || edu.org || edu.institution}</p>
+                        </div>
+                      {/each}
                     </div>
                   {/if}
                 </div>

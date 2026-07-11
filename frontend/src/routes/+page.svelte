@@ -168,8 +168,8 @@
     padding: 5rem 1.5rem 3rem; background: var(--gradient-hero);
   }
   .mesh { position: absolute; border-radius: 999px; filter: blur(70px); opacity: 0.35; pointer-events: none; }
-  .mesh-a { width: 420px; height: 420px; left: -120px; top: -120px; background: #2563eb; }
-  .mesh-b { width: 360px; height: 360px; right: -80px; bottom: -120px; background: #8b5cf6; }
+  .mesh-a { width: 420px; height: 420px; left: -120px; top: -120px; background: var(--primary); }
+  .mesh-b { width: 360px; height: 360px; right: -80px; bottom: -120px; background: var(--accent); }
   .hero-copy { position: relative; z-index: 1; max-width: 760px; text-align: center; }
   .brand-mark {
     width: 56px; height: 56px; margin: 0 auto 1rem; border-radius: 18px;

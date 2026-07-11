@@ -697,7 +697,15 @@ func GetMemUsage() uint64 {
 }
 
 func (h *ResumeHandler) Health(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{"status": "ok"})
+	// R-frontend: include the generate_resume_enabled flag so the public
+	// /api/health response matches what the frontend generate page expects
+	// (it reads d.generate_resume_enabled to decide whether to lock the AI
+	// chat). Previously this endpoint returned only {"status":"ok"}, leaving
+	// the flag undefined and the page permanently locked.
+	return c.JSON(fiber.Map{
+		"status":                  "ok",
+		"generate_resume_enabled": os.Getenv("ENABLE_GENERATE_RESUME") != "false",
+	})
 }
 
 func (h *ResumeHandler) AdminHealth(c *fiber.Ctx) error {

@@ -279,6 +279,13 @@
           <div style="height:10rem;background:{gradients[tpl.id]||gradients.modern};display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
             <div style="position:absolute;inset:0;background:radial-gradient(circle at 30% 40%, rgba(255,255,255,0.15) 0%, transparent 60%)"></div>
             <span aria-hidden="true" style="color:rgba(255,255,255,0.25);font-size:3.5rem;font-weight:700;position:relative;z-index:1">Aa</span>
+            {#if owned}
+              <div class="owned-overlay" aria-label={t.templates.ownedBadge}>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              </div>
+            {/if}
           </div>
           <div style="padding:1.25rem;text-align:left">
             <h3 style="font-weight:600;margin-bottom:0.375rem;color:var(--text)">{tpl.name}</h3>
@@ -331,6 +338,19 @@
   }
   .template-badge.owned {
     background: rgba(245,158,11,0.12); color: var(--accent, #d97706);
+  }
+  /* Checkmark overlay on the thumbnail of an already-purchased template. */
+  .owned-overlay {
+    position: absolute; top: 0.75rem; right: 0.75rem; z-index: 2;
+    width: 2rem; height: 2rem; border-radius: 9999px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.92); color: #16a34a;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    animation: popIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.6); }
+    to { opacity: 1; transform: scale(1); }
   }
   .template-badge.price {
     background: rgba(99,102,241,0.1); color: var(--primary);

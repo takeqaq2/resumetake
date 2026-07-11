@@ -49,18 +49,19 @@ func (up *UserPersistence) loadLocked() (map[string]*models.User, error) {
 	users := make(map[string]*models.User, len(loaded))
 	for email, user := range loaded {
 		users[email] = &models.User{
-			ID:             user.ID,
-			Email:          user.Email,
-			Password:       user.Password,
-			PasswordType:   user.PasswordType,
-			Name:           user.Name,
-			Token:          user.Token,
-			UsageCount:     user.UsageCount,
-			MaxFreeUsage:   user.MaxFreeUsage,
-			Plan:           user.Plan,
-			SubscriptionID: user.SubscriptionID,
-			CaptureID:      user.CaptureID,
-			CreatedAt:      user.CreatedAt,
+			ID:               user.ID,
+			Email:            user.Email,
+			Password:         user.Password,
+			PasswordType:     user.PasswordType,
+			Name:             user.Name,
+			Token:            user.Token,
+			UsageCount:       user.UsageCount,
+			MaxFreeUsage:     user.MaxFreeUsage,
+			Plan:             user.Plan,
+			SubscriptionID:   user.SubscriptionID,
+			CaptureID:        user.CaptureID,
+			PurchasedTemplates: user.PurchasedTemplates,
+			CreatedAt:        user.CreatedAt,
 		}
 	}
 
@@ -83,18 +84,19 @@ func (up *UserPersistence) saveLocked(users map[string]*models.User) error {
 	snapshot := make(map[string]*models.PersistedUser, len(users))
 	for email, user := range users {
 		snapshot[email] = &models.PersistedUser{
-			ID:             user.ID,
-			Email:          user.Email,
-			Password:       user.Password,
-			PasswordType:   user.PasswordType,
-			Name:           user.Name,
-			Token:          user.Token,
-			UsageCount:     user.UsageCount,
-			MaxFreeUsage:   user.MaxFreeUsage,
-			Plan:           user.Plan,
-			SubscriptionID: user.SubscriptionID,
-			CaptureID:      user.CaptureID,
-			CreatedAt:      user.CreatedAt,
+			ID:               user.ID,
+			Email:            user.Email,
+			Password:         user.Password,
+			PasswordType:     user.PasswordType,
+			Name:             user.Name,
+			Token:            user.Token,
+			UsageCount:       user.UsageCount,
+			MaxFreeUsage:     user.MaxFreeUsage,
+			Plan:             user.Plan,
+			SubscriptionID:   user.SubscriptionID,
+			CaptureID:        user.CaptureID,
+			PurchasedTemplates: user.PurchasedTemplates,
+			CreatedAt:        user.CreatedAt,
 		}
 	}
 
@@ -128,18 +130,19 @@ func cloneUser(u *models.User) *models.User {
 		return nil
 	}
 	return &models.User{
-		ID:             u.ID,
-		Email:          u.Email,
-		Password:       u.Password,
-		PasswordType:   u.PasswordType,
-		Name:           u.Name,
-		Token:          u.Token,
-		UsageCount:     u.UsageCount,
-		MaxFreeUsage:   u.MaxFreeUsage,
-		Plan:           u.Plan,
-		SubscriptionID: u.SubscriptionID,
-		CaptureID:      u.CaptureID,
-		CreatedAt:      u.CreatedAt,
+		ID:               u.ID,
+		Email:            u.Email,
+		Password:         u.Password,
+		PasswordType:     u.PasswordType,
+		Name:             u.Name,
+		Token:            u.Token,
+		UsageCount:       u.UsageCount,
+		MaxFreeUsage:     u.MaxFreeUsage,
+		Plan:             u.Plan,
+		SubscriptionID:   u.SubscriptionID,
+		CaptureID:        u.CaptureID,
+		PurchasedTemplates: u.PurchasedTemplates,
+		CreatedAt:        u.CreatedAt,
 	}
 }
 
@@ -263,5 +266,24 @@ func (up *UserPersistence) UpdateUserPlan(email, plan, subscriptionID, captureID
 	u.SubscriptionID = subscriptionID
 	u.CaptureID = captureID
 	u.MaxFreeUsage = maxFreeUsage
+	return up.saveLocked(loaded)
+}
+
+// UpdateUserTemplates updates only the purchased_templates list for the given
+// email. JSON file implementation (test/migration only); SQLite backed
+// DatabasePersistence performs a true targeted UPDATE. R37-B1.
+// R53b-B1: atomic under up.mu (previously Load→modify→Save raced).
+func (up *UserPersistence) UpdateUserTemplates(email string, templates []string) error {
+	up.mu.Lock()
+	defer up.mu.Unlock()
+	loaded, err := up.loadLocked()
+	if err != nil {
+		return err
+	}
+	u, ok := loaded[email]
+	if !ok {
+		return nil
+	}
+	u.PurchasedTemplates = templates
 	return up.saveLocked(loaded)
 }

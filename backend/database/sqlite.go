@@ -166,6 +166,23 @@ func (d *Database) migrate() error {
 		log.Printf("[DB] Added capture_id column to users table")
 	}
 
+	// PurchasedTemplates migration: stores the list of individually-purchased
+	// resume templates (e.g. ["modern","creative"]) as a JSON array in TEXT.
+	// Without this column, template purchases could not be persisted and the
+	// "purchased" badge would never show after a restart. Mirrors the
+	// capture_id backward-compatible migration above.
+	var tplColCount int
+	err = tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('users') WHERE name='purchased_templates'`).Scan(&tplColCount)
+	if err != nil {
+		return fmt.Errorf("failed to inspect users schema: %w", err)
+	}
+	if tplColCount == 0 {
+		if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN purchased_templates TEXT DEFAULT '[]'`); err != nil {
+			return fmt.Errorf("failed to add purchased_templates column: %w", err)
+		}
+		log.Printf("[DB] Added purchased_templates column to users table")
+	}
+
 	// Now safe to create the owner index — owner_id is guaranteed to exist.
 	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_resumes_owner ON resumes(owner_id)`); err != nil {
 		return fmt.Errorf("failed to create resumes owner index: %w", err)
@@ -201,17 +218,18 @@ func (d *Database) Ping() error {
 }
 
 type dbUser struct {
-	ID             string
-	Email          string
-	Password       string
-	PasswordType   string
-	Name           string
-	Token          string
-	UsageCount     int
-	MaxFreeUsage   int
-	Plan           string
-	SubscriptionID string
-	CaptureID      string
+	ID               string
+	Email            string
+	Password         string
+	PasswordType     string
+	Name             string
+	Token            string
+	UsageCount       int
+	MaxFreeUsage     int
+	Plan             string
+	SubscriptionID   string
+	CaptureID        string
+	PurchasedTemplates string
 	// R50-B4: CreatedAt removed — scanUser uses a local variable since the
 	// DB timestamp needs parsing before assignment to models.User.CreatedAt.
 }
@@ -220,7 +238,7 @@ func (d *Database) scanUser(row interface{ Scan(...interface{}) error }) (*model
 	var u dbUser
 	var createdAt string
 	err := row.Scan(&u.ID, &u.Email, &u.Password, &u.PasswordType, &u.Name, &u.Token,
-		&u.UsageCount, &u.MaxFreeUsage, &u.Plan, &u.SubscriptionID, &u.CaptureID, &createdAt)
+		&u.UsageCount, &u.MaxFreeUsage, &u.Plan, &u.SubscriptionID, &u.CaptureID, &u.PurchasedTemplates, &createdAt)
 	if err != nil {
 		return nil, err
 	}
@@ -235,19 +253,34 @@ func (d *Database) scanUser(row interface{ Scan(...interface{}) error }) (*model
 		log.Printf("[DB] unparseable created_at %q: %v", createdAt, err)
 		t = time.Now()
 	}
+
+	// Parse the purchased_templates JSON array. An empty/malformed value
+	// yields an empty (non-nil-safe) slice so callers can call includes.
+	var purchased []string
+	if strings.TrimSpace(u.PurchasedTemplates) != "" {
+		if jErr := json.Unmarshal([]byte(u.PurchasedTemplates), &purchased); jErr != nil {
+			log.Printf("[DB] unparseable purchased_templates %q: %v", u.PurchasedTemplates, jErr)
+			purchased = []string{}
+		}
+	}
+	if purchased == nil {
+		purchased = []string{}
+	}
+
 	return &models.User{
-		ID:             u.ID,
-		Email:          u.Email,
-		Password:       u.Password,
-		PasswordType:   u.PasswordType,
-		Name:           u.Name,
-		Token:          u.Token,
-		UsageCount:     u.UsageCount,
-		MaxFreeUsage:   u.MaxFreeUsage,
-		Plan:           u.Plan,
-		SubscriptionID: u.SubscriptionID,
-		CaptureID:      u.CaptureID,
-		CreatedAt:      t,
+		ID:               u.ID,
+		Email:            u.Email,
+		Password:         u.Password,
+		PasswordType:     u.PasswordType,
+		Name:             u.Name,
+		Token:            u.Token,
+		UsageCount:       u.UsageCount,
+		MaxFreeUsage:     u.MaxFreeUsage,
+		Plan:             u.Plan,
+		SubscriptionID:   u.SubscriptionID,
+		CaptureID:        u.CaptureID,
+		PurchasedTemplates: purchased,
+		CreatedAt:        t,
 	}, nil
 }
 
@@ -256,7 +289,7 @@ func (d *Database) GetUser(email string) (*models.User, error) {
 	defer d.mu.RUnlock()
 
 	row := d.db.QueryRow(
-		`SELECT id, email, password, password_type, name, token, usage_count, max_free_usage, plan, subscription_id, capture_id, created_at
+		`SELECT id, email, password, password_type, name, token, usage_count, max_free_usage, plan, subscription_id, capture_id, purchased_templates, created_at
 		 FROM users WHERE email = ?`, email)
 
 	user, err := d.scanUser(row)
@@ -271,7 +304,7 @@ func (d *Database) GetUserByToken(token string) (*models.User, error) {
 	defer d.mu.RUnlock()
 
 	row := d.db.QueryRow(
-		`SELECT id, email, password, password_type, name, token, usage_count, max_free_usage, plan, subscription_id, capture_id, created_at
+		`SELECT id, email, password, password_type, name, token, usage_count, max_free_usage, plan, subscription_id, capture_id, purchased_templates, created_at
 		 FROM users WHERE token = ?`, token)
 
 	user, err := d.scanUser(row)
@@ -286,7 +319,7 @@ func (d *Database) GetAllUsers() ([]*models.User, error) {
 	defer d.mu.RUnlock()
 
 	rows, err := d.db.Query(
-		`SELECT id, email, password, password_type, name, token, usage_count, max_free_usage, plan, subscription_id, capture_id, created_at
+		`SELECT id, email, password, password_type, name, token, usage_count, max_free_usage, plan, subscription_id, capture_id, purchased_templates, created_at
 		 FROM users`)
 	if err != nil {
 		return nil, err
@@ -311,11 +344,19 @@ func (d *Database) SaveUser(user *models.User) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	_, err := d.db.Exec(
-		`INSERT OR REPLACE INTO users (id, email, password, password_type, name, token, usage_count, max_free_usage, plan, subscription_id, capture_id, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	// Serialize purchased_templates to a JSON array for storage. A nil slice
+	// becomes "[]" so the column is always valid JSON.
+	tplJSON, err := json.Marshal(user.PurchasedTemplates)
+	if err != nil {
+		tplJSON = []byte("[]")
+	}
+
+	_, err = d.db.Exec(
+		`INSERT OR REPLACE INTO users (id, email, password, password_type, name, token, usage_count, max_free_usage, plan, subscription_id, capture_id, purchased_templates, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID, user.Email, user.Password, user.PasswordType, user.Name, user.Token,
 		user.UsageCount, user.MaxFreeUsage, user.Plan, user.SubscriptionID, user.CaptureID,
+		string(tplJSON),
 		user.CreatedAt.Format(time.RFC3339))
 	return err
 }
@@ -400,6 +441,25 @@ func (d *Database) UpdateUserPlan(email, plan, subscriptionID, captureID string,
 	_, err := d.db.Exec(
 		"UPDATE users SET plan = ?, subscription_id = ?, capture_id = ?, max_free_usage = ? WHERE email = ?",
 		plan, subscriptionID, captureID, maxFreeUsage, email)
+	return err
+}
+
+// UpdateUserTemplates performs a targeted UPDATE of only the
+// purchased_templates column. R37-B1: payment paths (CaptureTemplateOrder)
+// must not clobber concurrent usage_count increments, so we touch only the
+// purchased_templates column. The slice is stored as a JSON array.
+func (d *Database) UpdateUserTemplates(email string, templates []string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	tplJSON, err := json.Marshal(templates)
+	if err != nil {
+		tplJSON = []byte("[]")
+	}
+
+	_, err = d.db.Exec(
+		"UPDATE users SET purchased_templates = ? WHERE email = ?",
+		string(tplJSON), email)
 	return err
 }
 

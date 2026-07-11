@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	cryptorand "crypto/rand"
 	"fmt"
 	"log"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -503,10 +506,24 @@ func (h *ProductHandler) PurchaseTemplate(c *fiber.Ctx) error {
 	if baseURL == "" {
 		baseURL = "https://resume.takee.top"
 	}
-	returnURL := fmt.Sprintf("%s/%s/templates/pricing?payment=success", baseURL, body.Lang)
-	cancelURL := fmt.Sprintf("%s/%s/templates/pricing?payment=cancelled", baseURL, body.Lang)
+	// R46-F: the return URL points back to the templates page with the
+	// template id so the client can complete capture if the user returns
+	// from PayPal via browser redirect (SDK capture is the primary path).
+	// The previous "/templates/pricing" path did not exist — the success
+	// callback would have 404'd.
+	returnURL := fmt.Sprintf("%s/%s/templates?payment=success&template_id=%s", baseURL, body.Lang, body.TemplateID)
+	cancelURL := fmt.Sprintf("%s/%s/templates?payment=cancelled", baseURL, body.Lang)
 
-	orderID, err := services.CreatePayPalOrder(c.UserContext(), accessToken, templatePrice, "USD", "ResumeTake Template: "+body.TemplateID, "", returnURL, cancelURL)
+	// Build a reference_id that encodes the owner user ID and template ID so
+	// CaptureTemplateOrder can verify ownership and the purchased template
+	// without extra DB lookups. Format: "tpl_{uid}_{tplId}_{ts}_{rand}".
+	var rnd [4]byte
+	if _, err := cryptorand.Read(rnd[:]); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "INTERNAL_ERROR", "message": "Failed to generate order ID"})
+	}
+	refID := fmt.Sprintf("tpl_%s_%s_%d_%x", user.ID, body.TemplateID, time.Now().UnixNano(), rnd[:])
+
+	paypalOrderID, err := services.CreatePayPalOrder(c.UserContext(), accessToken, templatePrice, "USD", "ResumeTake Template: "+body.TemplateID, refID, returnURL, cancelURL)
 	if err != nil {
 		return c.Status(502).JSON(fiber.Map{"error": "PAYPAL_ERROR", "message": "Failed to create order"})
 	}
@@ -514,10 +531,142 @@ func (h *ProductHandler) PurchaseTemplate(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"success": true,
 		"data": fiber.Map{
-			"order_id":    orderID,
+			"order_id":    paypalOrderID,
 			"template_id": body.TemplateID,
 			"amount":      templatePrice,
 			"currency":    "USD",
 		},
+	})
+}
+
+// CaptureTemplateOrder verifies a PayPal template purchase and writes the
+// purchased template ID into the user's purchased_templates list. It mirrors
+// CapturePayPalOrder's verification (status, amount, ownership via
+// reference_id) but targets a single one-time template purchase instead of a
+// subscription plan. The "payment write-back" is the UpdateUserTemplates
+// persistence call + in-memory store update, which makes the "purchased" badge
+// appear on the templates page and survive restarts.
+func (h *ProductHandler) CaptureTemplateOrder(c *fiber.Ctx) error {
+	var body struct {
+		OrderID    string `json:"order_id"`
+		TemplateID string `json:"template_id"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "INVALID_BODY", "message": "Invalid request body"})
+	}
+
+	if body.OrderID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "MISSING_ORDER_ID", "message": "Order ID is required"})
+	}
+	if body.TemplateID == "" {
+		return c.Status(400).JSON(fiber.Map{"error": "MISSING_TEMPLATE_ID", "message": "Template ID is required"})
+	}
+
+	// Validate OrderID format to prevent path manipulation in the PayPal API
+	// URL, matching CapturePayPalOrder's guard.
+	for _, ch := range body.OrderID {
+		if !((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_') {
+			return c.Status(400).JSON(fiber.Map{"error": "INVALID_ORDER_ID", "message": "Invalid order ID format"})
+		}
+	}
+
+	// Verify the authenticated user BEFORE calling any PayPal API — otherwise
+	// a captured payment could not be attributed to a user.
+	user, ok := c.Locals("user").(*models.User)
+	if !ok || user == nil {
+		return c.Status(401).JSON(fiber.Map{"error": "UNAUTHORIZED", "message": "Authentication required"})
+	}
+
+	// Validate the purchased template against the server-side price map.
+	expectedAmount, ok := templatePrices[body.TemplateID]
+	if !ok {
+		return c.Status(400).JSON(fiber.Map{"error": "INVALID_TEMPLATE", "message": "Invalid template ID"})
+	}
+
+	accessToken, err := services.GetPayPalAccessToken(c.UserContext())
+	if err != nil {
+		return c.Status(502).JSON(fiber.Map{"error": "PAYPAL_ERROR", "message": "Failed to connect to PayPal"})
+	}
+
+	result, err := services.CapturePayPalOrder(c.UserContext(), accessToken, body.OrderID)
+	if err != nil {
+		log.Printf("[ERROR] CaptureTemplateOrder failed: %v", err)
+		return c.Status(502).JSON(fiber.Map{"error": "PAYPAL_ERROR", "message": "Failed to capture PayPal order"})
+	}
+
+	status, _ := result["status"].(string)
+	if status != "COMPLETED" {
+		return c.Status(400).JSON(fiber.Map{"error": "PAYMENT_INCOMPLETE", "message": "Payment not completed"})
+	}
+
+	// Verify the captured amount matches the expected template price to
+	// prevent upgrading after paying for a cheaper item. Fail-closed.
+	capturedAmount, capturedCurrency := extractCapturedAmount(result)
+	if capturedAmount == "" {
+		log.Printf("[ERROR] CaptureTemplateOrder: could not extract captured amount for order %s", body.OrderID)
+		return c.Status(400).JSON(fiber.Map{"error": "AMOUNT_UNVERIFIABLE", "message": "Could not verify payment amount"})
+	}
+	if capturedCurrency != "" && capturedCurrency != "USD" {
+		return c.Status(400).JSON(fiber.Map{"error": "CURRENCY_MISMATCH", "message": "Currency mismatch"})
+	}
+	capturedCents, err1 := parseToCents(capturedAmount)
+	expectedCents, err2 := parseToCents(expectedAmount)
+	if err1 != nil || err2 != nil || capturedCents != expectedCents {
+		return c.Status(400).JSON(fiber.Map{
+			"error":   "AMOUNT_MISMATCH",
+			"message": "Captured amount does not match template price",
+		})
+	}
+
+	// Verify ownership via reference_id ("tpl_{uid}_{tplId}_{ts}_{rand}").
+	// Fail-closed: if unextractable, we cannot prove ownership, so reject.
+	refID := extractReferenceID(result)
+	if refID == "" {
+		log.Printf("[ERROR] CaptureTemplateOrder: could not extract reference_id for order %s", body.OrderID)
+		return c.Status(403).JSON(fiber.Map{"error": "ORDER_OWNERSHIP_UNVERIFIABLE", "message": "Could not verify order ownership"})
+	}
+	refParts := strings.SplitN(refID, "_", 4) // ["tpl", uid, tplId, rest]
+	if len(refParts) < 3 || refParts[0] != "tpl" || refParts[1] != user.ID || refParts[2] != body.TemplateID {
+		return c.Status(403).JSON(fiber.Map{"error": "ORDER_OWNERSHIP_MISMATCH", "message": "This order does not belong to your account"})
+	}
+
+	// Write-back: add the template to the user's purchased list (dedup),
+	// building a fresh slice to avoid sharing a backing array across the
+	// in-memory store and concurrent readers.
+	updatedUser, ok := h.userStore.UpdateUser(user.Email, func(u *models.User) {
+		newList := make([]string, 0, len(u.PurchasedTemplates)+1)
+		newList = append(newList, u.PurchasedTemplates...)
+		found := false
+		for _, t := range newList {
+			if t == body.TemplateID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			newList = append(newList, body.TemplateID)
+		}
+		u.PurchasedTemplates = newList
+	})
+	if !ok {
+		return c.Status(404).JSON(fiber.Map{"error": "USER_NOT_FOUND", "message": "User no longer exists"})
+	}
+	if h.persistence != nil {
+		// R37-B1: targeted UPDATE of purchased_templates only, avoiding
+		// SaveUser's INSERT OR REPLACE which clobbers concurrent usage_count.
+		if err := h.persistence.UpdateUserTemplates(updatedUser.Email, updatedUser.PurchasedTemplates); err != nil {
+			log.Printf("[ERROR] Failed to persist purchased templates: %v", err)
+		}
+	}
+
+	// R40-L1: audit log for successful template purchase (financial
+	// reconciliation / dispute support).
+	log.Printf("[PAYMENT] User %s purchased template %s, order=%s, amount=%s USD",
+		hashEmail(user.Email), body.TemplateID, body.OrderID, capturedAmount)
+
+	return c.JSON(fiber.Map{
+		"success":            true,
+		"template_id":        body.TemplateID,
+		"purchased_templates": updatedUser.PurchasedTemplates,
 	})
 }

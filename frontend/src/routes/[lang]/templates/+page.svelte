@@ -1,6 +1,6 @@
 <script>
   import { page } from '$app/stores';
-  import { goto } from '$app/navigation';
+  import { goto, replaceState } from '$app/navigation';
   import { getTranslation } from '$lib/i18n/index.js';
   import { apiFetch, getToken } from '$lib/api.js';
   import { onMount } from 'svelte';
@@ -14,8 +14,8 @@
   let success = $state('');
   let redirectTimer;
   let cardRefs = $state([]);
-  // R55b-F3: track mount state so purchaseTemplate's redirectTimer callback
-  // doesn't fire goto() after the user has navigated away.
+  // R55b-F3: track mount state so async callbacks don't fire goto()/setState
+  // after the user has navigated away.
   let mounted = false;
 
   // R49-F1: display price for paid templates. Source of truth is
@@ -24,14 +24,19 @@
   // Payment is always charged in USD via PayPal regardless of locale.
   const templatePrice = '$2.99';
 
+  // --- Per-template PayPal purchase state (mirrors pricing page) ---
+  let paypalClientId = $state('');
+  let paypalRendered = $state({}); // tplId -> bool, so each button renders once
+  let paypalContainerRefs = $state([]); // index-aligned with t.templates.items
+  let sdkLoadFailed = $state(false);
+  let sdkLoading = $state(false);
+  let isLoggedIn = $state(false);
+
   // Svelte 5 declarative pattern: $effect runs client-side only, replaces
   // the old onMount querySelectorAll('.reveal') approach. bind:this collects
   // element refs without manual DOM lookup.
   $effect(() => {
     const cards = cardRefs.filter(Boolean);
-    // R27-M2: wait until ALL card refs are populated before creating the
-    // observer. Without this guard, each bind:this assignment triggers the
-    // effect, creating+destroying N-1 observers before the final one sticks.
     if (cards.length === 0 || cards.length < (t.templates?.items?.length || 0)) return;
     cards.forEach(el => el.classList.add('js-ready'));
     const observer = new IntersectionObserver((entries) => {
@@ -45,105 +50,185 @@
     mounted = true;
     let cancelled = false;
     const token = getToken();
+    isLoggedIn = !!token;
     if (token) {
       apiFetch("/api/v1/auth/me", { skipAuth: true }).then(res => res.ok ? res.json() : null).then(data => {
         if (cancelled) return;
         if (data?.data) user = data.data;
         userLoading = false;
-      }).catch(() => { if (!cancelled) userLoading = false; });
+        // User data changed the free/owned state of cards → ensure PayPal
+        // buttons are rendered for the now-paid templates.
+        setTimeout(() => maybeLoadPaypal(), 0);
+      }).catch(() => { if (!cancelled) userLoading = false; setTimeout(() => maybeLoadPaypal(), 0); });
     } else {
       userLoading = false;
     }
+
+    // Fetch the PayPal client id so we can render the buy buttons.
+    apiFetch('/api/config', { skipAuth: true }).then(r => r.json()).then(data => {
+      if (cancelled) return;
+      if (data?.paypal_client_id) {
+        paypalClientId = data.paypal_client_id;
+        setTimeout(() => maybeLoadPaypal(), 0);
+      }
+    }).catch(() => {});
+
+    // Handle the browser-redirect return (?payment=success / ?payment=cancelled).
+    // The primary capture path is the PayPal SDK onApprove (client-side); this
+    // is a safety net for users who close the popup and are redirected back.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      success = t.templates.purchaseSuccess;
+      replaceState(window.location.pathname, {});
+    } else if (params.get('payment') === 'cancelled') {
+      error = t.templates.paymentRequired;
+      replaceState(window.location.pathname, {});
+    }
+
     return () => { cancelled = true; mounted = false; clearTimeout(redirectTimer); };
   });
 
-  function isTemplateFree(tplId, index) {
+  function isTemplateFree(tplId) {
     if (user?.plan === "pro" || user?.plan === "enterprise") return true;
-    // R38b-L1: judge by template ID, not array index. "professional" is the
-    // free template; relying on index===0 would break if i18n ever reorders
-    // the items array. The index param is kept for backwards compat but
-    // no longer determines free-ness.
-    if (tplId === 'professional') return true;
-    if (user?.purchased_templates?.includes(tplId)) return true;
-    return false;
+    // "professional" is the free template; everything else requires purchase
+    // or a Pro/Enterprise plan. Owned (purchased) templates are handled
+    // separately so they show an "Owned" badge instead of "Free".
+    return tplId === 'professional';
   }
 
-  async function purchaseTemplate(tplId) {
-    // R49-F3: guard against concurrent purchases. `purchasing` is set to
-    // tplId when a purchase is in-flight, but the button's `disabled` attr
-    // only disables the CURRENT template's button — users can click another
-    // template's buy button while the first request is still pending,
-    // creating duplicate PayPal orders. This early return prevents that.
-    if (purchasing) return;
+  // Load the PayPal JS SDK once. Mirrors the pricing page's loader, including
+  // the 15s timeout so a silently-dropped script (ad blocker) surfaces a retry.
+  function loadPaypalScript() {
+    return new Promise((resolve, reject) => {
+      const existing = document.getElementById('paypal-sdk');
+      if (existing) {
+        if (typeof window.paypal !== 'undefined') { resolve(); return; }
+        existing.remove();
+      }
+      const script = document.createElement('script');
+      script.id = 'paypal-sdk';
+      script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(paypalClientId)}&currency=USD&intent=capture`;
+      script.async = true;
+      const loadTimeout = setTimeout(() => {
+        script.onload = script.onerror = null;
+        script.remove();
+        reject(new Error('paypal-sdk load timeout'));
+      }, 15000);
+      script.onload = () => { clearTimeout(loadTimeout); resolve(); };
+      script.onerror = () => { clearTimeout(loadTimeout); reject(new Error('paypal-sdk load failed')); };
+      document.head.appendChild(script);
+    });
+  }
+
+  function maybeLoadPaypal() {
+    if (sdkLoading || sdkLoadFailed) return;
+    if (!paypalClientId || !isLoggedIn) return;
+    if (typeof window.paypal !== 'undefined') { renderTemplateButtons(); return; }
+    sdkLoading = true;
+    loadPaypalScript()
+      .then(() => { sdkLoading = false; if (mounted) renderTemplateButtons(); })
+      .catch(() => { sdkLoading = false; sdkLoadFailed = true; });
+  }
+
+  function renderTemplateButtons() {
+    if (typeof window.paypal === 'undefined' || !mounted) return;
+    (t.templates?.items || []).forEach((tpl, i) => {
+      if (isTemplateFree(tpl.id, i)) return;
+      if (paypalRendered[tpl.id]) return;
+      const container = paypalContainerRefs[i];
+      if (!container) return;
+      container.replaceChildren();
+      window.paypal.Buttons({
+        style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'pay', height: 40 },
+        createOrder: (data, actions) => createTemplateOrder(tpl.id, data, actions),
+        onApprove: (data, actions) => onTemplateApprove(tpl.id, data, actions),
+        onError: () => { if (mounted) error = t.templates.purchaseFailed; },
+        onCancel: () => { if (mounted && !error) error = t.templates.paymentRequired; }
+      }).render(container)
+        .then(() => { paypalRendered = { ...paypalRendered, [tpl.id]: true }; })
+        .catch(() => { /* render failed — fall back to the plain Buy button */ });
+    });
+  }
+
+  async function createTemplateOrder(tplId, data, actions) {
+    error = '';
     const token = getToken();
     if (!token) {
-      // R55-F3: carry redirect param so user returns to templates after login
+      goto(`/${lang}/auth?redirect=${encodeURIComponent(`/${lang}/templates`)}`);
+      throw new Error('NOT_AUTHENTICATED');
+    }
+    purchasing = tplId;
+    try {
+      const res = await apiFetch('/api/v1/purchase-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: tplId, lang })
+      });
+      let result;
+      try { result = await res.json(); } catch { error = t.templates.networkError; purchasing = ''; throw new Error('ORDER_CREATE_FAILED'); }
+      if (!res.ok || !result.success || !result.data?.order_id) {
+        error = result.message || t.templates.purchaseFailed;
+        purchasing = '';
+        throw new Error(result.message || 'ORDER_CREATE_FAILED');
+      }
+      return result.data.order_id;
+    } catch (e) {
+      if (e.message === 'NOT_AUTHENTICATED' || e.message === 'ORDER_CREATE_FAILED') throw e;
+      error = t.templates.networkError;
+      purchasing = '';
+      throw new Error('NETWORK_ERROR');
+    }
+  }
+
+  async function onTemplateApprove(tplId, data, actions) {
+    const token = getToken();
+    if (!token) {
+      error = t.templates.purchaseFailed;
+      purchasing = '';
+      return;
+    }
+    error = '';
+    try {
+      const res = await apiFetch('/api/v1/capture-template-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: data.orderID, template_id: tplId })
+      });
+      if (!mounted) return;
+      let result;
+      try { result = await res.json(); } catch { error = t.templates.purchaseFailed; purchasing = ''; return; }
+      if (res.ok && result.success) {
+        // Update local user so the "purchased" badge shows immediately. The
+        // next /auth/me will also return it (persisted server-side).
+        if (user) {
+          const purchased = user.purchased_templates ? [...user.purchased_templates] : [];
+          if (!purchased.includes(tplId)) purchased.push(tplId);
+          user = { ...user, purchased_templates: purchased };
+        }
+        success = t.templates.purchaseSuccess;
+        purchasing = '';
+      } else {
+        error = result.message || t.templates.purchaseFailed;
+        purchasing = '';
+      }
+    } catch (e) {
+      if (mounted) { error = t.templates.networkError; purchasing = ''; }
+    }
+  }
+
+  // Fallback for not-logged-in users or when the SDK failed to load: redirect
+  // to login, or surface an error. The primary path is the PayPal button.
+  async function purchaseTemplateFallback(tplId) {
+    const token = getToken();
+    if (!token) {
       goto(`/${lang}/auth?redirect=${encodeURIComponent(`/${lang}/templates`)}`);
       return;
     }
-    purchasing = tplId;
-    error = '';
-    success = '';
-    let keepLock = false;
-    try {
-      // R52b-F1: Only call the API if the user has a plan that might include
-      // this template (free/included case). For paid users without the
-      // template, redirect to pricing WITHOUT creating an orphaned PayPal
-      // order — the previous flow created an order via /purchase-template
-      // but never captured it.
-      if (user && (user.plan === 'pro' || user.plan === 'enterprise')) {
-        const res = await apiFetch("/api/v1/purchase-template", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ template_id: tplId, lang }),
-        });
-        let result;
-        try {
-          result = await res.json();
-        } catch {
-          error = t.templates.networkError;
-          return;
-        }
-        if (res.ok && result.success) {
-          const data = result.data || {};
-          if (data.order_id) {
-            // Should not happen for Pro/Enterprise, but handle gracefully.
-            success = t.templates.paymentRequired;
-            keepLock = true;
-            if (redirectTimer) clearTimeout(redirectTimer);
-            redirectTimer = setTimeout(() => {
-              if (!mounted) return;
-              goto(`/${lang}/pricing`);
-              purchasing = '';
-            }, 1500);
-          } else {
-            // Free or included in plan — mark as purchased locally.
-            if (user) {
-              const purchased = user.purchased_templates || [];
-              if (!purchased.includes(tplId)) purchased.push(tplId);
-              user = { ...user, purchased_templates: purchased };
-            }
-            success = t.templates.purchaseSuccess;
-          }
-        } else {
-          error = result.message || t.templates.purchaseFailed;
-        }
-      } else {
-        // Free user — redirect to pricing to subscribe (Pro includes all templates).
-        success = t.templates.paymentRequired;
-        keepLock = true;
-        if (redirectTimer) clearTimeout(redirectTimer);
-        redirectTimer = setTimeout(() => {
-          if (!mounted) return;
-          goto(`/${lang}/pricing`);
-          purchasing = '';
-        }, 1500);
-      }
-    } catch (e) {
-      error = t.templates.networkError;
-    } finally {
-      if (mounted && !keepLock) purchasing = '';
+    if (sdkLoadFailed) {
+      error = t.templates.purchaseFailed;
+      return;
     }
+    maybeLoadPaypal();
   }
 </script>
 
@@ -187,7 +272,8 @@
         executive: 'linear-gradient(135deg,#374151,#111827)',
         minimal: 'linear-gradient(135deg,#f59e0b,#d97706)'
       }}
-      {@const isFree = isTemplateFree(tpl.id, i)}
+      {@const free = isTemplateFree(tpl.id)}
+      {@const owned = user?.purchased_templates?.includes(tpl.id)}
       <div class="feature-card reveal template-card" bind:this={cardRefs[i]} style="padding:0;overflow:hidden;transition-delay:{i * 0.08}s">
         <a href="/{lang}/editor" style="text-decoration:none;color:inherit;display:block">
           <div style="height:10rem;background:{gradients[tpl.id]||gradients.modern};display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
@@ -202,17 +288,19 @@
         <div style="padding:0 1.25rem 1.25rem;display:flex;align-items:center;justify-content:space-between">
           {#if userLoading}
             <span class="template-badge" style="background:var(--bg-glass);border:1px solid var(--border);color:var(--text-secondary)">…</span>
-          {:else if isFree}
+            <button class="template-use-btn" disabled style="opacity:0.5">…</button>
+          {:else if free}
             <span class="template-badge free">{t.templates.freeBadge}</span>
+            <a href="/{lang}/editor" class="template-use-btn">{t.templates.use}</a>
+          {:else if owned}
+            <span class="template-badge owned">{t.templates.ownedBadge}</span>
+            <a href="/{lang}/editor" class="template-use-btn">{t.templates.use}</a>
+          {:else if isLoggedIn && paypalClientId && !sdkLoadFailed}
+            <span class="template-badge price">{templatePrice}</span>
+            <div bind:this={paypalContainerRefs[i]} class="paypal-template-btn" aria-label={t.templates.buy}></div>
           {:else}
             <span class="template-badge price">{templatePrice}</span>
-          {/if}
-          {#if userLoading}
-            <button class="template-use-btn" disabled style="opacity:0.5">…</button>
-          {:else if isFree}
-            <a href="/{lang}/editor" class="template-use-btn">{t.templates.use}</a>
-          {:else}
-            <button class="template-buy-btn" onclick={() => purchaseTemplate(tpl.id)} disabled={!!purchasing}>
+            <button class="template-buy-btn" onclick={() => purchaseTemplateFallback(tpl.id)} disabled={!!purchasing || sdkLoading}>
               {purchasing === tpl.id ? t.templates.processing : t.templates.buy}
             </button>
           {/if}
@@ -241,6 +329,9 @@
   .template-badge.free {
     background: rgba(16,185,129,0.1); color: var(--success-text);
   }
+  .template-badge.owned {
+    background: rgba(245,158,11,0.12); color: var(--accent, #d97706);
+  }
   .template-badge.price {
     background: rgba(99,102,241,0.1); color: var(--primary);
   }
@@ -263,6 +354,10 @@
   }
   .template-buy-btn:disabled {
     opacity: 0.5; cursor: not-allowed;
+  }
+  /* PayPal button container: keep it compact and aligned with the badge. */
+  .paypal-template-btn {
+    min-width: 140px; max-width: 180px;
   }
   .error-banner {
     max-width: 24rem; margin: 0 auto 1.5rem; padding: 0.75rem 1rem;

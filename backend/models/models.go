@@ -12,33 +12,35 @@ import (
 const MaxResumes = 5000
 
 type User struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	Password       string    `json:"-"`
-	PasswordType   string    `json:"-"`
-	Name           string    `json:"name"`
-	Token          string    `json:"token"`
-	UsageCount     int       `json:"usage_count"`
-	MaxFreeUsage   int       `json:"max_free_usage"`
-	Plan           string    `json:"plan"`
-	SubscriptionID string    `json:"subscription_id,omitempty"`
-	CaptureID      string    `json:"capture_id,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID               string    `json:"id"`
+	Email            string    `json:"email"`
+	Password         string    `json:"-"`
+	PasswordType     string    `json:"-"`
+	Name             string    `json:"name"`
+	Token            string    `json:"token"`
+	UsageCount       int       `json:"usage_count"`
+	MaxFreeUsage     int       `json:"max_free_usage"`
+	Plan             string    `json:"plan"`
+	SubscriptionID   string    `json:"subscription_id,omitempty"`
+	CaptureID        string    `json:"capture_id,omitempty"`
+	PurchasedTemplates []string `json:"purchased_templates,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type PersistedUser struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	Password       string    `json:"password"`
-	PasswordType   string    `json:"password_type,omitempty"`
-	Name           string    `json:"name"`
-	Token          string    `json:"token"`
-	UsageCount     int       `json:"usage_count"`
-	MaxFreeUsage   int       `json:"max_free_usage"`
-	Plan           string    `json:"plan"`
-	SubscriptionID string    `json:"subscription_id,omitempty"`
-	CaptureID      string    `json:"capture_id,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID               string    `json:"id"`
+	Email            string    `json:"email"`
+	Password         string    `json:"password"`
+	PasswordType     string    `json:"password_type,omitempty"`
+	Name             string    `json:"name"`
+	Token            string    `json:"token"`
+	UsageCount       int       `json:"usage_count"`
+	MaxFreeUsage     int       `json:"max_free_usage"`
+	Plan             string    `json:"plan"`
+	SubscriptionID   string    `json:"subscription_id,omitempty"`
+	CaptureID        string    `json:"capture_id,omitempty"`
+	PurchasedTemplates []string `json:"purchased_templates,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 type Resume struct {

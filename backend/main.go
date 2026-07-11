@@ -435,6 +435,7 @@ func main() {
 	v1.Get("/products", productHandler.GetProducts)
 	v1.Post("/purchase-product", middleware.AuthMiddleware(userStore), paypalLimiter, productHandler.PurchaseProduct)
 	v1.Post("/purchase-template", middleware.AuthMiddleware(userStore), paypalLimiter, productHandler.PurchaseTemplate)
+	v1.Post("/capture-template-order", middleware.AuthMiddleware(userStore), paypalLimiter, productHandler.CaptureTemplateOrder)
 	v1.Post("/cover-letter", middleware.AuthMiddleware(userStore), limiter.New(limiter.Config{
 		Max:        10,
 		Expiration: time.Minute,
@@ -551,4 +552,11 @@ func (dp *DatabasePersistence) UpdateUserTokenAndPassword(email, token, password
 // R37-B1: used by payment paths to avoid SaveUser clobbering usage_count.
 func (dp *DatabasePersistence) UpdateUserPlan(email, plan, subscriptionID, captureID string, maxFreeUsage int) error {
 	return dp.db.UpdateUserPlan(email, plan, subscriptionID, captureID, maxFreeUsage)
+}
+
+// UpdateUserTemplates performs a targeted UPDATE of only the purchased_templates
+// column. R37-B1: used by CaptureTemplateOrder to avoid clobbering concurrent
+// usage_count/plan increments with a stale snapshot.
+func (dp *DatabasePersistence) UpdateUserTemplates(email string, templates []string) error {
+	return dp.db.UpdateUserTemplates(email, templates)
 }

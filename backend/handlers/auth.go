@@ -46,6 +46,10 @@ type UserPersistence interface {
 	// capture_id, and max_free_usage. Use for CapturePayPalOrder and webhook
 	// upgrade/downgrade — avoids clobbering concurrent usage_count increments.
 	UpdateUserPlan(email, plan, subscriptionID, captureID string, maxFreeUsage int) error
+	// UpdateUserTemplates performs a targeted UPDATE of only the
+	// purchased_templates column. Use for CaptureTemplateOrder — avoids
+	// clobbering concurrent usage_count/plan increments.
+	UpdateUserTemplates(email string, templates []string) error
 }
 
 // dummyBcryptHash is used to equalize timing on the Login "user not found"
@@ -501,15 +505,16 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 
 func sanitizeUser(u *models.User) fiber.Map {
 	return fiber.Map{
-		"id":              u.ID,
-		"email":           u.Email,
-		"name":            u.Name,
-		"token":           u.Token,
-		"plan":            u.Plan,
-		"usage_count":     u.UsageCount,
-		"max_free_usage":  u.MaxFreeUsage,
-		"subscription_id": u.SubscriptionID,
-		"created_at":      u.CreatedAt,
+		"id":                 u.ID,
+		"email":              u.Email,
+		"name":               u.Name,
+		"token":              u.Token,
+		"plan":               u.Plan,
+		"usage_count":        u.UsageCount,
+		"max_free_usage":     u.MaxFreeUsage,
+		"subscription_id":    u.SubscriptionID,
+		"purchased_templates": u.PurchasedTemplates,
+		"created_at":         u.CreatedAt,
 	}
 }
 
@@ -518,13 +523,14 @@ func sanitizeUser(u *models.User) fiber.Map {
 // R48-B2: prevents token leakage via proxy/CDN/APM response body logging.
 func sanitizeUserPublic(u *models.User) fiber.Map {
 	return fiber.Map{
-		"id":              u.ID,
-		"email":           u.Email,
-		"name":            u.Name,
-		"plan":            u.Plan,
-		"usage_count":     u.UsageCount,
-		"max_free_usage":  u.MaxFreeUsage,
-		"subscription_id": u.SubscriptionID,
-		"created_at":      u.CreatedAt,
+		"id":                 u.ID,
+		"email":              u.Email,
+		"name":               u.Name,
+		"plan":               u.Plan,
+		"usage_count":        u.UsageCount,
+		"max_free_usage":     u.MaxFreeUsage,
+		"subscription_id":    u.SubscriptionID,
+		"purchased_templates": u.PurchasedTemplates,
+		"created_at":         u.CreatedAt,
 	}
 }

@@ -706,8 +706,73 @@ func (h *PaymentHandler) PayPalWebhook(c *fiber.Ctx) error {
 				return c.Status(500).JSON(fiber.Map{"error": "PERSIST_FAILED", "message": "Failed to persist, will retry"})
 			}
 		}
+		// Only log "downgraded" when an actual downgrade happened. The
+		// UpdateUser callback sets downgraded=false (and skips the plan
+		// change) when the user has already re-purchased with a different
+		// capture ID — in that case the existing plan must be preserved, so
+		// the previous always-on log line was misleading (it claimed a
+		// downgrade that never occurred).
+		if downgraded {
 			log.Printf("[PayPal Webhook] User %s downgraded to free after full refund %s", hashEmail(u.Email), refundParentID)
 		} else {
+			log.Printf("[PayPal Webhook] Refund %s: user %s re-purchased (capture mismatch) — keeping current plan", event.ID, hashEmail(u.Email))
+		}
+		} else {
+			// Plan lookups failed. A template purchase uses a DISTINCT
+			// capture ID (separate from the plan's CaptureID/SubscriptionID),
+			// so try the template-capture index. On a full refund, revoke the
+			// purchased template so the user can't keep a refunded item.
+			if tu, tok := h.userStore.GetByTemplateCaptureID(refundParentID); tok {
+				token, err := services.GetPayPalAccessToken(c.UserContext())
+				if err != nil {
+					h.seenEvents.UnmarkSeen(event.ID)
+					log.Printf("[PayPal Webhook] Template refund %s: failed to get PayPal token: %v", event.ID, err)
+					return c.Status(500).JSON(fiber.Map{"error": "TOKEN_FAILED", "message": "Failed to verify refund, will retry"})
+				}
+				_, _, captureStatus, err := services.GetPayPalCapture(c.UserContext(), token, refundParentID)
+				if err != nil {
+					h.seenEvents.UnmarkSeen(event.ID)
+					log.Printf("[PayPal Webhook] Template refund %s: failed to fetch capture %s: %v", event.ID, refundParentID, err)
+					return c.Status(500).JSON(fiber.Map{"error": "CAPTURE_LOOKUP_FAILED", "message": "Failed to verify refund status, will retry"})
+				}
+				if captureStatus != "REFUNDED" {
+					log.Printf("[PayPal Webhook] Template refund %s: capture status=%s — keeping template", event.ID, captureStatus)
+					return c.JSON(fiber.Map{"success": true, "skipped": "partial refund"})
+				}
+				// Reverse the template purchase: drop both the capture
+				// mapping and the purchased_templates entry.
+				updatedUser, ok := h.userStore.UpdateUser(tu.Email, func(u *models.User) {
+					var newCaps []models.TemplateCapture
+					var newTpl []string
+					removed := false
+					for _, tc := range u.TemplateCaptures {
+						if tc.CaptureID == refundParentID {
+							removed = true
+							continue
+						}
+						newCaps = append(newCaps, tc)
+						newTpl = append(newTpl, tc.TemplateID)
+					}
+					if removed {
+						u.TemplateCaptures = newCaps
+						u.PurchasedTemplates = newTpl
+					}
+				})
+				if !ok {
+					h.seenEvents.UnmarkSeen(event.ID)
+					log.Printf("[PayPal Webhook] Template refund %s: UpdateUser failed for %s, retrying", event.ID, hashEmail(tu.Email))
+					return c.Status(500).JSON(fiber.Map{"error": "UPDATE_FAILED", "message": "Failed to revoke template, will retry"})
+				}
+				if h.persistence != nil {
+					if err := h.persistence.UpdateUserTemplates(tu.Email, updatedUser.PurchasedTemplates, updatedUser.TemplateCaptures); err != nil {
+						h.seenEvents.UnmarkSeen(event.ID)
+						log.Printf("[ERROR] Failed to persist template refund revocation: %v", err)
+						return c.Status(500).JSON(fiber.Map{"error": "PERSIST_FAILED", "message": "Failed to persist, will retry"})
+					}
+				}
+				log.Printf("[PayPal Webhook] User %s template revoked after refund %s", hashEmail(tu.Email), refundParentID)
+				return c.JSON(fiber.Map{"success": true, "template_revoked": true})
+			}
 			// User not found by capture ID or subscription ID — may
 			// already be free or order was from a different system.
 			// Keep marked as seen to stop retries (no action to retry).

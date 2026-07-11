@@ -47,9 +47,10 @@ type UserPersistence interface {
 	// upgrade/downgrade — avoids clobbering concurrent usage_count increments.
 	UpdateUserPlan(email, plan, subscriptionID, captureID string, maxFreeUsage int) error
 	// UpdateUserTemplates performs a targeted UPDATE of only the
-	// purchased_templates column. Use for CaptureTemplateOrder — avoids
+	// purchased_templates and template_captures columns. Use for
+	// CaptureTemplateOrder and the template-refund webhook — avoids
 	// clobbering concurrent usage_count/plan increments.
-	UpdateUserTemplates(email string, templates []string) error
+	UpdateUserTemplates(email string, templates []string, captures []models.TemplateCapture) error
 }
 
 // dummyBcryptHash is used to equalize timing on the Login "user not found"

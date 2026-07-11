@@ -24,6 +24,10 @@ type User struct {
 	SubscriptionID   string    `json:"subscription_id,omitempty"`
 	CaptureID        string    `json:"capture_id,omitempty"`
 	PurchasedTemplates []string `json:"purchased_templates,omitempty"`
+	// TemplateCaptures records each completed template purchase's PayPal
+	// capture ID so a later refund webhook can identify and revoke the
+	// template. Keyed by capture ID (see UserStore.byTemplateCaptureID).
+	TemplateCaptures []TemplateCapture `json:"template_captures,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
 }
 
@@ -40,7 +44,17 @@ type PersistedUser struct {
 	SubscriptionID   string    `json:"subscription_id,omitempty"`
 	CaptureID        string    `json:"capture_id,omitempty"`
 	PurchasedTemplates []string `json:"purchased_templates,omitempty"`
+	TemplateCaptures []TemplateCapture `json:"template_captures,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
+}
+
+// TemplateCapture links a completed template purchase to its PayPal capture
+// ID. Stored on the User so the REFUND webhook can locate the user+templates
+// by capture ID (PayPal's refund event only carries parent_id = capture ID,
+// which for templates is NOT the plan's CaptureID/SubscriptionID).
+type TemplateCapture struct {
+	CaptureID  string `json:"capture_id"`
+	TemplateID string `json:"template_id"`
 }
 
 type Resume struct {
@@ -224,14 +238,19 @@ type UserStore struct {
 	byToken          map[string]*User
 	bySubscriptionID map[string]*User
 	byCaptureID      map[string]*User
+	// byTemplateCaptureID maps a template purchase's PayPal capture ID to its
+	// user, so the REFUND webhook can reverse template purchases. The plan's
+	// byCaptureID index is separate (a user can hold both a plan and templates).
+	byTemplateCaptureID map[string]*User
 }
 
 func NewUserStore() *UserStore {
 	return &UserStore{
-		users:            make(map[string]*User),
-		byToken:          make(map[string]*User),
-		bySubscriptionID: make(map[string]*User),
-		byCaptureID:      make(map[string]*User),
+		users:               make(map[string]*User),
+		byToken:             make(map[string]*User),
+		bySubscriptionID:    make(map[string]*User),
+		byCaptureID:         make(map[string]*User),
+		byTemplateCaptureID: make(map[string]*User),
 	}
 }
 
@@ -295,6 +314,11 @@ func (us *UserStore) Save(user *User) {
 		if old.CaptureID != "" {
 			delete(us.byCaptureID, old.CaptureID)
 		}
+		for _, tc := range old.TemplateCaptures {
+			if tc.CaptureID != "" {
+				delete(us.byTemplateCaptureID, tc.CaptureID)
+			}
+		}
 	}
 	// Store a clone so the caller's pointer is decoupled from the store's
 	// internal state — subsequent mutations by the caller won't corrupt the
@@ -310,6 +334,11 @@ func (us *UserStore) Save(user *User) {
 	}
 	if stored.CaptureID != "" {
 		us.byCaptureID[stored.CaptureID] = stored
+	}
+	for _, tc := range stored.TemplateCaptures {
+		if tc.CaptureID != "" {
+			us.byTemplateCaptureID[tc.CaptureID] = stored
+		}
 	}
 }
 
@@ -339,6 +368,20 @@ func (us *UserStore) GetBySubscriptionID(subID string) (*User, bool) {
 	return cloneUser(u), ok
 }
 
+// GetByTemplateCaptureID returns the user who purchased a template with the
+// given PayPal capture ID (O(1)). Used by the REFUND webhook to reverse
+// template purchases — a template's capture ID is distinct from the plan's
+// CaptureID/SubscriptionID, so the plan lookups above won't match it.
+func (us *UserStore) GetByTemplateCaptureID(captureID string) (*User, bool) {
+	if captureID == "" {
+		return nil, false
+	}
+	us.mu.RLock()
+	defer us.mu.RUnlock()
+	u, ok := us.byTemplateCaptureID[captureID]
+	return cloneUser(u), ok
+}
+
 func (us *UserStore) GetAll() map[string]*User {
 	us.mu.RLock()
 	defer us.mu.RUnlock()
@@ -364,6 +407,7 @@ func (us *UserStore) UpdateUser(email string, mutate func(*User)) (*User, bool) 
 	oldToken := u.Token
 	oldSubID := u.SubscriptionID
 	oldCapID := u.CaptureID
+	oldTplCaps := u.TemplateCaptures
 	mutate(u)
 	// Reindex Token, SubscriptionID, and CaptureID if the mutate callback changed them.
 	if u.Token != oldToken {
@@ -390,7 +434,38 @@ func (us *UserStore) UpdateUser(email string, mutate func(*User)) (*User, bool) 
 			us.byCaptureID[u.CaptureID] = u
 		}
 	}
+	// Reindex template-capture entries if the mutate callback changed them.
+	if !sameTemplateCaptures(oldTplCaps, u.TemplateCaptures) {
+		for _, tc := range oldTplCaps {
+			if tc.CaptureID != "" {
+				delete(us.byTemplateCaptureID, tc.CaptureID)
+			}
+		}
+		for _, tc := range u.TemplateCaptures {
+			if tc.CaptureID != "" {
+				us.byTemplateCaptureID[tc.CaptureID] = u
+			}
+		}
+	}
 	return cloneUser(u), true
+}
+
+// sameTemplateCaptures reports whether two TemplateCapture slices are equal
+// (ignoring order, since a refund removes one entry regardless of position).
+func sameTemplateCaptures(a, b []TemplateCapture) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]bool, len(a))
+	for _, tc := range a {
+		seen[tc.CaptureID+":"+tc.TemplateID] = true
+	}
+	for _, tc := range b {
+		if !seen[tc.CaptureID+":"+tc.TemplateID] {
+			return false
+		}
+	}
+	return true
 }
 
 // IncrementUsage atomically increments the user's UsageCount and returns the
@@ -457,6 +532,11 @@ func (us *UserStore) SaveIfAbsent(user *User) bool {
 	if stored.CaptureID != "" {
 		us.byCaptureID[stored.CaptureID] = stored
 	}
+	for _, tc := range stored.TemplateCaptures {
+		if tc.CaptureID != "" {
+			us.byTemplateCaptureID[tc.CaptureID] = stored
+		}
+	}
 	return true
 }
 
@@ -467,6 +547,7 @@ func (us *UserStore) Load(users map[string]*User) {
 	us.byToken = make(map[string]*User, len(users))
 	us.bySubscriptionID = make(map[string]*User, len(users))
 	us.byCaptureID = make(map[string]*User, len(users))
+	us.byTemplateCaptureID = make(map[string]*User, len(users))
 	for _, u := range users {
 		stored := cloneUser(u)
 		us.users[stored.Email] = stored
@@ -478,6 +559,11 @@ func (us *UserStore) Load(users map[string]*User) {
 		}
 		if stored.CaptureID != "" {
 			us.byCaptureID[stored.CaptureID] = stored
+		}
+		for _, tc := range stored.TemplateCaptures {
+			if tc.CaptureID != "" {
+				us.byTemplateCaptureID[tc.CaptureID] = stored
+			}
 		}
 	}
 }

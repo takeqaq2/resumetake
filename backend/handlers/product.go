@@ -647,14 +647,33 @@ func (h *ProductHandler) CaptureTemplateOrder(c *fiber.Ctx) error {
 			newList = append(newList, body.TemplateID)
 		}
 		u.PurchasedTemplates = newList
+		// R37-T1: record the PayPal capture ID so a later refund webhook can
+		// locate and revoke this template purchase. The capture ID is distinct
+		// from the plan's CaptureID, hence a separate list.
+		if captureID := extractCaptureID(result); captureID != "" {
+			has := false
+			for _, tc := range u.TemplateCaptures {
+				if tc.CaptureID == captureID {
+					has = true
+					break
+				}
+			}
+			if !has {
+				u.TemplateCaptures = append(u.TemplateCaptures, models.TemplateCapture{
+					CaptureID:  captureID,
+					TemplateID: body.TemplateID,
+				})
+			}
+		}
 	})
 	if !ok {
 		return c.Status(404).JSON(fiber.Map{"error": "USER_NOT_FOUND", "message": "User no longer exists"})
 	}
 	if h.persistence != nil {
-		// R37-B1: targeted UPDATE of purchased_templates only, avoiding
-		// SaveUser's INSERT OR REPLACE which clobbers concurrent usage_count.
-		if err := h.persistence.UpdateUserTemplates(updatedUser.Email, updatedUser.PurchasedTemplates); err != nil {
+		// R37-B1: targeted UPDATE of purchased_templates + template_captures
+		// only, avoiding SaveUser's INSERT OR REPLACE which clobbers
+		// concurrent usage_count.
+		if err := h.persistence.UpdateUserTemplates(updatedUser.Email, updatedUser.PurchasedTemplates, updatedUser.TemplateCaptures); err != nil {
 			log.Printf("[ERROR] Failed to persist purchased templates: %v", err)
 		}
 	}

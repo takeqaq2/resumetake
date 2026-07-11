@@ -554,9 +554,10 @@ func (dp *DatabasePersistence) UpdateUserPlan(email, plan, subscriptionID, captu
 	return dp.db.UpdateUserPlan(email, plan, subscriptionID, captureID, maxFreeUsage)
 }
 
-// UpdateUserTemplates performs a targeted UPDATE of only the purchased_templates
-// column. R37-B1: used by CaptureTemplateOrder to avoid clobbering concurrent
-// usage_count/plan increments with a stale snapshot.
-func (dp *DatabasePersistence) UpdateUserTemplates(email string, templates []string) error {
-	return dp.db.UpdateUserTemplates(email, templates)
+// UpdateUserTemplates performs a targeted UPDATE of only the
+// purchased_templates and template_captures columns. R37-B1: used by
+// CaptureTemplateOrder and the template-refund webhook to avoid clobbering
+// concurrent usage_count/plan increments with a stale snapshot.
+func (dp *DatabasePersistence) UpdateUserTemplates(email string, templates []string, captures []models.TemplateCapture) error {
+	return dp.db.UpdateUserTemplates(email, templates, captures)
 }

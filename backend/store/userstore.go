@@ -61,6 +61,7 @@ func (up *UserPersistence) loadLocked() (map[string]*models.User, error) {
 			SubscriptionID:   user.SubscriptionID,
 			CaptureID:        user.CaptureID,
 			PurchasedTemplates: user.PurchasedTemplates,
+			TemplateCaptures: user.TemplateCaptures,
 			CreatedAt:        user.CreatedAt,
 		}
 	}
@@ -96,6 +97,7 @@ func (up *UserPersistence) saveLocked(users map[string]*models.User) error {
 			SubscriptionID:   user.SubscriptionID,
 			CaptureID:        user.CaptureID,
 			PurchasedTemplates: user.PurchasedTemplates,
+			TemplateCaptures: user.TemplateCaptures,
 			CreatedAt:        user.CreatedAt,
 		}
 	}
@@ -142,6 +144,7 @@ func cloneUser(u *models.User) *models.User {
 		SubscriptionID:   u.SubscriptionID,
 		CaptureID:        u.CaptureID,
 		PurchasedTemplates: u.PurchasedTemplates,
+		TemplateCaptures: u.TemplateCaptures,
 		CreatedAt:        u.CreatedAt,
 	}
 }
@@ -269,11 +272,12 @@ func (up *UserPersistence) UpdateUserPlan(email, plan, subscriptionID, captureID
 	return up.saveLocked(loaded)
 }
 
-// UpdateUserTemplates updates only the purchased_templates list for the given
-// email. JSON file implementation (test/migration only); SQLite backed
-// DatabasePersistence performs a true targeted UPDATE. R37-B1.
+// UpdateUserTemplates updates only the purchased_templates and
+// template_captures for the given email. JSON file implementation
+// (test/migration only); SQLite backed DatabasePersistence performs a true
+// targeted UPDATE. R37-B1.
 // R53b-B1: atomic under up.mu (previously Load→modify→Save raced).
-func (up *UserPersistence) UpdateUserTemplates(email string, templates []string) error {
+func (up *UserPersistence) UpdateUserTemplates(email string, templates []string, captures []models.TemplateCapture) error {
 	up.mu.Lock()
 	defer up.mu.Unlock()
 	loaded, err := up.loadLocked()
@@ -285,5 +289,6 @@ func (up *UserPersistence) UpdateUserTemplates(email string, templates []string)
 		return nil
 	}
 	u.PurchasedTemplates = templates
+	u.TemplateCaptures = captures
 	return up.saveLocked(loaded)
 }
